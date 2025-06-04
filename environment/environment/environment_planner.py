@@ -17,7 +17,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import structlog
 
-from gpu.gpu_detector import GPUInfo, GPUVendor, AMDArchitecture, NVIDIAArchitecture, EnvironmentRequirement
+from environment.gpu.gpu_detector import GPUInfo, GPUVendor, AMDArchitecture, NVIDIAArchitecture, EnvironmentRequirement
 
 logger = structlog.get_logger(__name__)
 

@@ -7,6 +7,7 @@ Manages registration, heartbeat, task coordination, and status reporting
 import aiohttp
 import asyncio
 import logging
+import socket
 from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 import structlog
@@ -36,81 +37,261 @@ class ClusterClient:
     
     async def connect(self) -> bool:
         """Connect to cluster manager"""
-        # TODO: Implement connection establishment
-        # 1. Create aiohttp session
-        # 2. Test connection
-        # 3. Authenticate if needed
-        # 4. Set connected status
-        pass
-    
+        try:
+            # Create aiohttp session with proper configuration
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            connector = aiohttp.TCPConnector(
+                keepalive_timeout=30,
+                enable_cleanup_closed=True
+            )
+            
+            self.session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                headers=self._prepare_headers()
+            )
+            
+            # Test connection with health check
+            async with self.session.get(f"{self.cluster_manager_url}/health") as response:
+                if response.status == 200:
+                    self.connected = True
+                    logger.info(f"Successfully connected to cluster manager at {self.cluster_manager_url}")
+                    return True
+                else:
+                    logger.error(f"Cluster manager health check failed: {response.status}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Failed to connect to cluster manager: {e}")
+            if self.session:
+                await self.session.close()
+                self.session = None
+            return False
+
     async def disconnect(self):
         """Disconnect from cluster manager"""
-        # TODO: Implement disconnection
-        # 1. Stop heartbeat
-        # 2. Close session
-        # 3. Update status
-        pass
-    
+        try:
+            # Stop heartbeat loop
+            if self.heartbeat_task and not self.heartbeat_task.done():
+                self.heartbeat_task.cancel()
+                try:
+                    await self.heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Close HTTP session
+            if self.session:
+                await self.session.close()
+                self.session = None
+            
+            self.connected = False
+            logger.info("Disconnected from cluster manager")
+            
+        except Exception as e:
+            logger.error(f"Error during disconnect: {e}")
+
     async def register_node(self, capabilities: Dict[str, Any], resources: Dict[str, Any]) -> bool:
         """Register this node with cluster manager"""
-        # TODO: Implement node registration
-        # 1. Prepare registration data
-        # 2. Send POST request to cluster
-        # 3. Handle response
-        # 4. Start heartbeat if successful
-        pass
-    
+        if not self.connected or not self.session:
+            logger.error("Not connected to cluster manager")
+            return False
+            
+        try:
+            registration_data = {
+                "node_id": self.node_id,
+                "hostname": socket.gethostname(),
+                "capabilities": capabilities,
+                "resources": resources,
+                "timestamp": datetime.utcnow().isoformat(),
+                "status": "registering"
+            }
+            
+            async with self.session.post(
+                f"{self.cluster_manager_url}/nodes/register",
+                json=registration_data
+            ) as response:
+                if response.status == 201:
+                    logger.info(f"Successfully registered node {self.node_id}")
+                    # Start heartbeat after successful registration
+                    await self.start_heartbeat_loop()
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Node registration failed: {response.status} - {error_text}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Failed to register node: {e}")
+            return False
+
     async def send_heartbeat(self) -> bool:
         """Send heartbeat to cluster manager"""
-        # TODO: Implement heartbeat
-        # 1. Prepare heartbeat data
-        # 2. Send PUT request
-        # 3. Handle response
-        # 4. Update connection status
-        pass
-    
+        if not self.connected or not self.session:
+            return False
+            
+        try:
+            heartbeat_data = {
+                "node_id": self.node_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "status": "active"
+            }
+            
+            async with self.session.put(
+                f"{self.cluster_manager_url}/nodes/{self.node_id}/heartbeat",
+                json=heartbeat_data
+            ) as response:
+                if response.status == 200:
+                    return True
+                else:
+                    logger.warning(f"Heartbeat failed: {response.status}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Heartbeat error: {e}")
+            return False
+
     async def update_node_status(self, status: str, details: Optional[Dict[str, Any]] = None) -> bool:
         """Update node status with cluster manager"""
-        # TODO: Implement status update
-        pass
-    
+        if not self.connected or not self.session:
+            return False
+            
+        try:
+            status_data = {
+                "node_id": self.node_id,
+                "status": status,
+                "details": details or {},
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            async with self.session.put(
+                f"{self.cluster_manager_url}/nodes/{self.node_id}/status",
+                json=status_data
+            ) as response:
+                return response.status == 200
+                
+        except Exception as e:
+            logger.error(f"Failed to update node status: {e}")
+            return False
+
     async def report_capabilities(self, capabilities: Dict[str, Any]) -> bool:
         """Report updated capabilities to cluster"""
-        # TODO: Implement capability reporting
-        pass
-    
+        if not self.connected or not self.session:
+            return False
+            
+        try:
+            async with self.session.put(
+                f"{self.cluster_manager_url}/nodes/{self.node_id}/capabilities",
+                json={"capabilities": capabilities, "timestamp": datetime.utcnow().isoformat()}
+            ) as response:
+                return response.status == 200
+                
+        except Exception as e:
+            logger.error(f"Failed to report capabilities: {e}")
+            return False
+
     async def report_resources(self, resources: Dict[str, Any]) -> bool:
         """Report current resource usage to cluster"""
-        # TODO: Implement resource reporting
-        pass
-    
+        if not self.connected or not self.session:
+            return False
+            
+        try:
+            async with self.session.put(
+                f"{self.cluster_manager_url}/nodes/{self.node_id}/resources",
+                json={"resources": resources, "timestamp": datetime.utcnow().isoformat()}
+            ) as response:
+                return response.status == 200
+                
+        except Exception as e:
+            logger.error(f"Failed to report resources: {e}")
+            return False
+
     async def get_task_assignment(self) -> Optional[Dict[str, Any]]:
         """Check for new task assignments from cluster"""
-        # TODO: Implement task polling
-        pass
-    
+        if not self.connected or not self.session:
+            return None
+            
+        try:
+            async with self.session.get(
+                f"{self.cluster_manager_url}/nodes/{self.node_id}/tasks/next"
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                elif response.status == 204:
+                    # No tasks available
+                    return None
+                else:
+                    logger.warning(f"Failed to get task assignment: {response.status}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"Error getting task assignment: {e}")
+            return None
+
     async def report_task_status(self, task_id: str, status: str, result: Optional[Any] = None) -> bool:
         """Report task execution status to cluster"""
-        # TODO: Implement task status reporting
-        pass
-    
+        if not self.connected or not self.session:
+            return False
+            
+        try:
+            status_data = {
+                "task_id": task_id,
+                "node_id": self.node_id,
+                "status": status,
+                "result": result,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            async with self.session.put(
+                f"{self.cluster_manager_url}/tasks/{task_id}/status",
+                json=status_data
+            ) as response:
+                return response.status == 200
+                
+        except Exception as e:
+            logger.error(f"Failed to report task status: {e}")
+            return False
+
     async def start_heartbeat_loop(self):
         """Start automatic heartbeat loop"""
-        # TODO: Implement heartbeat loop
-        # 1. Create periodic task
-        # 2. Send heartbeats at interval
-        # 3. Handle failures
-        # 4. Retry logic
-        pass
-    
+        if self.heartbeat_task and not self.heartbeat_task.done():
+            # Already running
+            return
+            
+        async def heartbeat_loop():
+            """Heartbeat loop coroutine"""
+            while self.connected:
+                try:
+                    success = await self.send_heartbeat()
+                    if not success:
+                        logger.warning("Heartbeat failed, connection may be lost")
+                        # Could implement reconnection logic here
+                    
+                    await asyncio.sleep(self.heartbeat_interval)
+                    
+                except asyncio.CancelledError:
+                    logger.info("Heartbeat loop cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Heartbeat loop error: {e}")
+                    await asyncio.sleep(self.heartbeat_interval)
+        
+        self.heartbeat_task = asyncio.create_task(heartbeat_loop())
+        logger.info(f"Started heartbeat loop with {self.heartbeat_interval}s interval")
+
     async def stop_heartbeat_loop(self):
         """Stop heartbeat loop"""
-        # TODO: Stop heartbeat task
-        pass
-    
+        if self.heartbeat_task and not self.heartbeat_task.done():
+            self.heartbeat_task.cancel()
+            try:
+                await self.heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            
+        self.heartbeat_task = None
+        logger.info("Stopped heartbeat loop")
+
     def _prepare_headers(self) -> Dict[str, str]:
         """Prepare HTTP headers for requests"""
-        # TODO: Add authentication headers
         headers = {"Content-Type": "application/json"}
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"

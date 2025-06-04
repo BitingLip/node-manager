@@ -23,7 +23,10 @@ class WorkerState(Enum):
     INITIALIZING = "initializing"
     READY = "ready"
     BUSY = "busy"
+    PROCESSING = "processing"
+    PAUSED = "paused"
     ERROR = "error"
+    STOPPING = "stopping"
     SHUTTING_DOWN = "shutting_down"
     STOPPED = "stopped"
 
@@ -108,42 +111,165 @@ class BaseWorker(abc.ABC):
     def get_capabilities(self) -> Dict[str, Any]:
         """Get worker capabilities and requirements"""        # TODO: Override in subclasses
         # Return supported models, resource requirements, etc.
-        pass
-    
+        pass    
     async def start(self) -> bool:
         """Start the worker process"""
-        # TODO: Implement worker startup
-        # 1. Initialize resources
-        # 2. Start message processing loop
-        # 3. Send ready signal
-        # 4. Begin heartbeat
-        return True
+        try:
+            logger.info(f"Starting worker {self.worker_id}")
+            
+            # 1. Initialize resources
+            if not await self.initialize():
+                logger.error(f"Failed to initialize worker {self.worker_id}")
+                return False
+            
+            # 2. Update status to ready
+            self.state = WorkerState.READY
+            self.update_status(WorkerState.READY, {"message": "Worker started successfully"})
+            
+            # 3. Start message processing loop (would be in separate process/thread)
+            # In a real implementation, this would start the worker event loop
+            logger.info(f"Worker {self.worker_id} started and ready")
+            
+            # 4. Begin heartbeat (placeholder)
+            self.send_heartbeat()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start worker {self.worker_id}: {e}")
+            self.state = WorkerState.ERROR
+            self.report_error(e)
+            return False
     
     async def stop(self, graceful: bool = True) -> bool:
         """Stop the worker process"""
-        # TODO: Implement worker shutdown
-        # 1. Complete current task if graceful
-        # 2. Release resources
-        # 3. Close connections
-        # 4. Clean up
-        return True
+        try:
+            logger.info(f"Stopping worker {self.worker_id} (graceful: {graceful})")
+            
+            # 1. Update status to stopping
+            self.state = WorkerState.STOPPING
+            self.update_status(WorkerState.STOPPING)
+            
+            if graceful and self.current_task:
+                # 2. Complete current task if graceful
+                logger.info(f"Waiting for current task {self.current_task} to complete")
+                # In real implementation, would wait for task completion
+                
+            # 3. Release resources (override in subclasses)
+            await self._cleanup_resources()
+            
+            # 4. Update final status
+            self.state = WorkerState.STOPPED
+            self.update_status(WorkerState.STOPPED, {"message": "Worker stopped"})
+            
+            logger.info(f"Worker {self.worker_id} stopped successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to stop worker {self.worker_id}: {e}")
+            return False
+    
+    async def _cleanup_resources(self):
+        """Clean up worker-specific resources (override in subclasses)"""
+        # Base implementation - override in specific workers
+        pass
     
     def send_heartbeat(self):
         """Send heartbeat to node manager"""
-        # TODO: Implement heartbeat mechanism
-        pass
+        try:
+            heartbeat_data = {
+                'worker_id': self.worker_id,
+                'state': self.state.value,
+                'current_task': self.current_task,
+                'timestamp': datetime.now().isoformat(),
+                'resource_usage': self._get_resource_usage()
+            }
+            
+            # In real implementation, would send via IPC or HTTP
+            logger.debug(f"Heartbeat from worker {self.worker_id}: {heartbeat_data}")
+            
+        except Exception as e:
+            logger.error(f"Failed to send heartbeat from worker {self.worker_id}: {e}")
+    
+    def _get_resource_usage(self) -> Dict[str, Any]:
+        """Get current resource usage (simplified)"""
+        return {
+            'cpu_percent': 0.0,  # Would get actual CPU usage
+            'memory_mb': 0,      # Would get actual memory usage
+            'gpu_utilization': 0.0  # Would get actual GPU usage
+        }
     
     def report_error(self, error: Exception):
         """Report error to node manager"""
-        # TODO: Implement error reporting
-        pass
+        try:
+            error_data = {
+                'worker_id': self.worker_id,
+                'error_type': type(error).__name__,
+                'error_message': str(error),
+                'timestamp': datetime.now().isoformat(),
+                'current_task': self.current_task
+            }
+            
+            logger.error(f"Worker {self.worker_id} error: {error_data}")
+            
+            # In real implementation, would send error via IPC or HTTP
+            
+        except Exception as e:
+            logger.error(f"Failed to report error from worker {self.worker_id}: {e}")
     
     def update_status(self, state: WorkerState, details: Optional[Dict[str, Any]] = None):
         """Update worker status"""
-        # TODO: Update status and notify node manager
-        pass
+        try:
+            self.state = state
+            
+            status_data = {
+                'worker_id': self.worker_id,
+                'state': state.value,
+                'timestamp': datetime.now().isoformat(),
+                'details': details or {}
+            }
+            
+            logger.debug(f"Worker {self.worker_id} status update: {status_data}")
+            
+            # In real implementation, would send status via IPC or HTTP
+            
+        except Exception as e:
+            logger.error(f"Failed to update status for worker {self.worker_id}: {e}")
     
     async def handle_shutdown_signal(self, signum, frame):
         """Handle shutdown signals gracefully"""
-        # TODO: Implement graceful shutdown on signals
-        pass
+        logger.info(f"Worker {self.worker_id} received shutdown signal {signum}")
+        await self.stop(graceful=True)
+    
+    async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a task with proper state management"""
+        task_id = task_data.get('task_id', 'unknown')
+        
+        try:
+            logger.info(f"Worker {self.worker_id} executing task {task_id}")
+            
+            # Update state to processing
+            self.current_task = task_id
+            self.state = WorkerState.PROCESSING
+            self.update_status(WorkerState.PROCESSING, {'task_id': task_id})
+            
+            # Process the task (calls the abstract method)
+            result = await self.process_task(task_data)
+            
+            # Update state back to ready
+            self.current_task = None
+            self.state = WorkerState.READY
+            self.update_status(WorkerState.READY, {'completed_task': task_id})
+            
+            logger.info(f"Worker {self.worker_id} completed task {task_id}")
+            return result
+            
+        except Exception as e:
+            # Handle task failure
+            self.current_task = None
+            self.state = WorkerState.ERROR
+            self.update_status(WorkerState.ERROR, {'failed_task': task_id, 'error': str(e)})
+            self.report_error(e)
+            
+            logger.error(f"Worker {self.worker_id} failed task {task_id}: {e}")
+            raise

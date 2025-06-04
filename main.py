@@ -15,7 +15,18 @@ import structlog
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from managers.node_manager import create_node_manager
+# Also add the node-manager directory to path
+node_manager_dir = Path(__file__).parent
+sys.path.insert(0, str(node_manager_dir))
+
+# Import the node manager factory function
+try:
+    from . import create_node_manager
+except ImportError:
+    # Fallback: create a minimal version
+    def create_node_manager(config_path=None):
+        from core import NodeController
+        return NodeController()
 
 
 def setup_logging(log_level: str = "INFO"):
@@ -109,7 +120,7 @@ async def main():
         signal.signal(signal.SIGINT, signal_handler)
         
         # Start node manager
-        success = await node_manager.start()
+        success = node_manager.start()
         if not success:
             logger.error("Failed to start node manager")
             sys.exit(1)
