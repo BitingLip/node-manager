@@ -8,7 +8,7 @@ import asyncio
 import time
 import json
 import multiprocessing as mp
-from typing import Dict, List, Optional, Any, Callable, Iterator
+from typing import Dict, List, Optional, Any, Callable, Iterator, Tuple
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
@@ -307,8 +307,9 @@ class BaseComputeWorker(ABC):
                     
                     # Update metrics
                     self.metrics.tasks_processed += 1
-                    processing_time = task.completed_at - task.started_at
-                    self.metrics.total_processing_time += processing_time
+                    if task.completed_at is not None and task.started_at is not None:
+                        processing_time = task.completed_at - task.started_at
+                        self.metrics.total_processing_time += processing_time
                     
                     # Notify callbacks
                     for callback in self.completion_callbacks:

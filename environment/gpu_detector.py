@@ -1,19 +1,38 @@
 """
-GPU Hardware Detector
+GPU Hardware Detector with Enhanced RDNA4 and OS Support
 Detects and analyzes GPU hardware capabilities for environment planning
-Identifies vendor, architecture, driver versions, and compatibility
+Identifies vendor, architecture, driver versions, compatibility, and virtual environment requirements
+Includes RDNA4 support and WSL detection for optimal environment strategy
 """
 
 import platform
 import subprocess
-import re
-import logging
+import os
+import sys
+import wmi
 from typing import Dict, List, Optional, Any, NamedTuple
 from enum import Enum
 from dataclasses import dataclass
 import structlog
 
 logger = structlog.get_logger(__name__)
+
+
+class OSEnvironmentType(Enum):
+    """Operating system environment types for GPU optimization"""
+    WINDOWS_NATIVE = "windows_native"
+    WINDOWS_WSL = "windows_wsl"
+    LINUX_NATIVE = "linux_native"
+    MACOS = "macos"
+    UNKNOWN = "unknown"
+
+
+class VirtualEnvironmentStrategy(Enum):
+    """Virtual environment strategies based on GPU architecture"""
+    SYSTEM_PYTHON_REQUIRED = "system_python_required"  # RDNA1, RDNA2
+    VENV_WSL_PREFERRED = "venv_wsl_preferred"  # RDNA3, RDNA4, NVIDIA
+    VENV_CUDA = "venv_cuda"  # NVIDIA specific
+    MIXED_STRATEGY = "mixed_strategy"  # Multiple GPU types
 
 
 class GPUVendor(Enum):
@@ -147,9 +166,19 @@ class GPUDetector:
                 
                 # Get compute capability
                 try:
-                    major, minor = pynvml.nvmlDeviceGetCudaComputeCapability(handle)
-                    compute_capability = f"{major}.{minor}"
-                except:
+                    # pynvml does not provide compute capability, so use nvidia-smi as fallback
+                    compute_capability = None
+                    try:
+                        smi_output = subprocess.check_output(
+                            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader", f"--id={i}"],
+                            encoding="utf-8"
+                        )
+                        compute_capability = smi_output.strip()
+                        if not compute_capability or "N/A" in compute_capability:
+                            compute_capability = None
+                    except Exception:
+                        compute_capability = None
+                except Exception:
                     compute_capability = None
                 
                 # Determine architecture from compute capability
@@ -442,3 +471,123 @@ class GPUDetector:
         
         logger.info("Environment planning completed", groups=list(env_groups.keys()))
         return env_groups
+    
+    def detect_os_environment(self) -> Dict[str, Any]:
+        """Detect operating system environment including WSL status"""
+        os_info = {
+            "system": self.system_os,
+            "release": self.os_version,
+            "machine": platform.machine(),
+            "is_wsl": False,
+            "wsl_version": None,
+            "wsl_available": False
+        }
+        
+        # Check for WSL if running on Linux
+        if self.system_os == "linux":
+            try:
+                with open('/proc/version', 'r') as f:
+                    version_info = f.read().lower()
+                    if 'microsoft' in version_info or 'wsl' in version_info:
+                        os_info["is_wsl"] = True
+                        if 'wsl2' in version_info:
+                            os_info["wsl_version"] = "2"
+                        else:
+                            os_info["wsl_version"] = "1"
+                        logger.info("WSL environment detected", version=os_info["wsl_version"])
+            except Exception as e:
+                logger.debug("Could not detect WSL status", error=str(e))
+        
+        # Check if WSL is available on Windows
+        elif self.system_os == "windows":
+            try:
+                result = subprocess.run(["wsl", "--list", "--quiet"], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and result.stdout.strip():
+                    os_info["wsl_available"] = True
+                    distributions = [
+                        dist.strip() for dist in result.stdout.split('\n') 
+                        if dist.strip()
+                    ]
+                    os_info["wsl_distributions"] = distributions
+                    logger.info("WSL available on Windows", distributions=distributions)
+                else:
+                    os_info["wsl_available"] = False
+            except Exception as e:
+                logger.debug("WSL not available or accessible", error=str(e))
+                os_info["wsl_available"] = False
+        
+        return os_info
+
+    def determine_environment_strategy(self, gpus: Optional[List[GPUInfo]] = None) -> Dict[str, Any]:
+        """Determine optimal environment strategy based on detected GPUs and OS"""
+        if gpus is None:
+            gpus = self.detected_gpus
+        
+        os_info = self.detect_os_environment()
+        
+        # Categorize GPUs by environment requirements
+        rdna1_rdna2_count = 0
+        modern_gpu_count = 0  # RDNA3+, NVIDIA
+        
+        for gpu in gpus:
+            if gpu.vendor == GPUVendor.AMD:
+                arch = AMDArchitecture(gpu.architecture)
+                if arch in [AMDArchitecture.RDNA1, AMDArchitecture.RDNA2]:
+                    rdna1_rdna2_count += 1
+                elif arch in [AMDArchitecture.RDNA3, AMDArchitecture.RDNA4]:
+                    modern_gpu_count += 1
+            elif gpu.vendor == GPUVendor.NVIDIA:
+                modern_gpu_count += 1
+        
+        # Determine strategy
+        if rdna1_rdna2_count > 0 and modern_gpu_count == 0:
+            # Only RDNA1/2 - must use native Windows
+            strategy = {
+                "type": "native_windows_required",
+                "reason": "RDNA1/2 GPUs require DirectML on native Windows",
+                "environment": "system_python",
+                "use_wsl": False,
+                "use_venv": False
+            }
+        elif rdna1_rdna2_count > 0 and modern_gpu_count > 0:
+            # Mixed setup
+            strategy = {
+                "type": "mixed_environment",
+                "reason": "Mixed GPU setup requires separate environments",
+                "environment": "separate_per_gpu_type",
+                "use_wsl": os_info["wsl_available"],
+                "use_venv": True
+            }
+        elif modern_gpu_count > 0:
+            # Only modern GPUs - prefer venv/WSL
+            strategy = {
+                "type": "venv_preferred",
+                "reason": "Modern GPUs support venv and WSL environments",
+                "environment": "venv_wsl" if os_info["wsl_available"] else "venv",
+                "use_wsl": os_info["wsl_available"],
+                "use_venv": True
+            }
+        else:
+            # No GPUs or unknown - default venv
+            strategy = {
+                "type": "default_venv",
+                "reason": "No specific GPU requirements",
+                "environment": "venv",
+                "use_wsl": False,
+                "use_venv": True
+            }
+        
+        strategy["os_info"] = os_info
+        strategy["gpu_breakdown"] = {
+            "rdna1_rdna2": rdna1_rdna2_count,
+            "modern_gpus": modern_gpu_count,
+            "total": len(gpus)
+        }
+        
+        logger.info("Environment strategy determined", 
+                   strategy_type=strategy["type"],
+                   rdna1_rdna2=rdna1_rdna2_count,
+                   modern_gpus=modern_gpu_count)
+        
+        return strategy
