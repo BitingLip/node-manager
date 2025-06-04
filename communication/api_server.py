@@ -40,16 +40,16 @@ class APIServer:
         
         # Register routes
         self._register_routes()
-        
-        logger.info(f"APIServer initialized on port {port}")
+          logger.info(f"APIServer initialized on port {port}")
     
     def _register_routes(self):
         """Register API routes"""
+        
         @self.app.get("/health")
         async def health_check():
             """Health check endpoint"""
             if self.node_controller:
-                status = await self.node_controller.get_health_status()
+                status = self.node_controller.get_status()
                 return {"status": "healthy", "details": status}
             return {"status": "healthy", "message": "Node controller not initialized"}
         
@@ -57,7 +57,7 @@ class APIServer:
         async def get_status():
             """Get node status"""
             if self.node_controller:
-                status = await self.node_controller.get_status()
+                status = self.node_controller.get_status()
                 return status
             return {"error": "Node controller not initialized"}
         

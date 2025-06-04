@@ -130,8 +130,7 @@ class NodeController:
             if not self._start_monitoring():
                 logger.error("Failed to start monitoring systems")
                 return False
-            
-            # 5. Connect to cluster manager
+              # 5. Connect to cluster manager
             if not self.register_with_cluster():
                 logger.warning("Failed to register with cluster (continuing anyway)")
             
@@ -140,7 +139,12 @@ class NodeController:
                 logger.error("Failed to start task dispatcher")
                 return False
             
-            # 7. Begin monitoring loop
+            # 7. Start API server
+            if not self._start_api_server():
+                logger.error("Failed to start API server")
+                return False
+            
+            # 8. Begin monitoring loop
             self._start_monitoring_loop()
             
             self.status = "ready"
@@ -533,18 +537,43 @@ class NodeController:
             import multiprocessing
             capabilities['cpu'] = {
                 'cores': multiprocessing.cpu_count(),
-                'threads': multiprocessing.cpu_count()
-            }
+                'threads': multiprocessing.cpu_count()            }
         
         # Add memory information
         try:
             import psutil
             memory_info = psutil.virtual_memory()
             capabilities['memory'] = {
-                'total_mb': memory_info.total // (1024 * 1024),
-                'available_mb': memory_info.available // (1024 * 1024)
+                'total_mb': memory_info.total // (1024 * 1024),                'available_mb': memory_info.available // (1024 * 1024)
             }
         except ImportError:
             capabilities['memory'] = {'total_mb': 'unknown', 'available_mb': 'unknown'}
         
         return capabilities
+    
+    def _start_api_server(self) -> bool:
+        """Start API server"""
+        try:
+            from communication.api_server_simple import APIServer
+            import threading
+            import asyncio
+            
+            self.api_server = APIServer(
+                node_controller=self,
+                port=self.config.get('api', {}).get('port', 8010)
+            )
+            
+            # Start API server in a separate thread
+            def run_api_server():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.api_server.start())
+            
+            self._api_thread = threading.Thread(target=run_api_server, daemon=True)
+            self._api_thread.start()
+            
+            logger.info("API server started on separate thread")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to start API server: {e}")
+            return False

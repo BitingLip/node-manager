@@ -311,12 +311,12 @@ class ResourceManager:
             
         except Exception as e:
             logger.debug(f"NVIDIA GPU detection failed: {e}")
-        
-        # Try AMD GPU detection (basic)
+          # Try AMD GPU detection using WMI (Windows) and other methods
         try:
-            # TODO: Implement AMD GPU detection
-            # This would require ROCm/HIP tools
-            pass
+            amd_gpus = self._detect_amd_gpus()
+            gpu_devices.extend(amd_gpus)
+            if amd_gpus:
+                logger.info(f"Detected {len(amd_gpus)} AMD GPU(s)")
         except Exception as e:
             logger.debug(f"AMD GPU detection failed: {e}")
         
@@ -349,6 +349,108 @@ class ResourceManager:
             logger.debug(f"Failed to get GPU usage: {e}")
         
         return usage
+    
+    def _detect_amd_gpus(self) -> List[Dict[str, Any]]:
+        """Detect AMD GPUs using WMI and other Windows methods"""
+        amd_gpus = []
+        
+        # Method 1: Try WMI on Windows
+        try:
+            # Check if we're on Windows first
+            import platform
+            if platform.system() != 'Windows':
+                logger.debug("Non-Windows system, skipping WMI AMD GPU detection")
+                return amd_gpus
+                
+            import wmi
+            c = wmi.WMI()
+            gpu_id = 0
+            
+            for gpu in c.Win32_VideoController():
+                if gpu.Name and ('AMD' in gpu.Name or 'Radeon' in gpu.Name):
+                    # Convert adapter RAM to bytes (WMI returns it in bytes)
+                    memory_total = int(gpu.AdapterRAM or 0)
+                    
+                    # WMI often reports incorrect memory for AMD cards, use model-based defaults
+                    if memory_total < 1024 * 1024 * 1024:  # Less than 1GB, probably wrong
+                        if 'RX 6800' in gpu.Name:
+                            memory_total = 16 * 1024 * 1024 * 1024  # 16GB for RX 6800/6800 XT
+                        else:
+                            memory_total = 8 * 1024 * 1024 * 1024   # Default 8GB for other AMD cards
+                    
+                    amd_gpus.append({
+                        'id': gpu_id,
+                        'name': gpu.Name.strip(),
+                        'vendor': 'AMD',
+                        'memory_total': memory_total,
+                        'memory_used': 0,  # Would need ROCm tools for actual usage
+                        'memory_free': memory_total,
+                        'driver_version': gpu.DriverVersion or 'Unknown',
+                        'device_id': gpu.DeviceID or f"amd_gpu_{gpu_id}",
+                        'detection_method': 'WMI',
+                        'status': 'available'
+                    })
+                    gpu_id += 1
+                    logger.debug(f"Detected AMD GPU: {gpu.Name} with {memory_total // (1024**3)}GB VRAM")
+                    
+        except ImportError:
+            logger.debug("WMI module not available for AMD GPU detection")
+        except Exception as e:
+            logger.debug(f"WMI AMD GPU detection failed: {e}")
+        
+        # Method 2: Try PowerShell fallback if WMI didn't work or failed
+        if not amd_gpus:
+            try:
+                import subprocess
+                import json
+                
+                ps_command = """
+                Get-WmiObject -Class Win32_VideoController | 
+                Where-Object {$_.Name -like '*AMD*' -or $_.Name -like '*Radeon*'} | 
+                Select-Object Name, AdapterRAM, DriverVersion, DeviceID | 
+                ConvertTo-Json
+                """
+                
+                result = subprocess.run([
+                    'powershell', '-Command', ps_command
+                ], capture_output=True, text=True, timeout=15)
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    gpu_data = json.loads(result.stdout)
+                    
+                    # Handle both single GPU (dict) and multiple GPUs (list)
+                    if isinstance(gpu_data, dict):
+                        gpu_data = [gpu_data]
+                    
+                    for i, gpu in enumerate(gpu_data):
+                        memory_total = int(gpu.get('AdapterRAM') or 0)
+                        
+                        # Fix incorrect memory reporting
+                        if memory_total < 1024 * 1024 * 1024:  # Less than 1GB
+                            if 'RX 6800' in gpu.get('Name', ''):
+                                memory_total = 16 * 1024 * 1024 * 1024  # 16GB for RX 6800/6800 XT
+                            else:
+                                memory_total = 8 * 1024 * 1024 * 1024   # Default 8GB
+                        
+                        amd_gpus.append({
+                            'id': i,
+                            'name': gpu.get('Name', 'Unknown AMD GPU').strip(),
+                            'vendor': 'AMD',
+                            'memory_total': memory_total,
+                            'memory_used': 0,
+                            'memory_free': memory_total,
+                            'driver_version': gpu.get('DriverVersion', 'Unknown'),
+                            'device_id': gpu.get('DeviceID', f"amd_gpu_{i}"),
+                            'detection_method': 'PowerShell_WMI',
+                            'status': 'available'
+                        })
+                        logger.debug(f"Detected AMD GPU via PowerShell: {gpu.get('Name')} with {memory_total // (1024**3)}GB VRAM")
+                        
+            except Exception as e:
+                logger.debug(f"PowerShell AMD GPU detection failed: {e}")
+        
+        logger.info(f"AMD GPU detection completed: found {len(amd_gpus)} devices")
+        return amd_gpus
     
     def monitor_resources(self) -> Dict[str, Any]:
         """Continuous resource monitoring for metrics collection"""

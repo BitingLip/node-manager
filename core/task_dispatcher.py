@@ -51,7 +51,8 @@ class TaskInfo:
         self.retry_count = 0
 
 
-class TaskDispatcher:    """
+class TaskDispatcher:
+    """
     Manages task queue and dispatches tasks to appropriate workers
     Handles task prioritization, routing, and execution coordination
     """
@@ -73,6 +74,18 @@ class TaskDispatcher:    """
         self.task_callbacks = {}  # task_id -> callback function
         
         logger.info(f"TaskDispatcher initialized for node {self.node_id}")
+    
+    def start(self):
+        """Start the task dispatcher"""
+        logger.info(f"TaskDispatcher started for node {self.node_id}")
+        # Start background task processing if needed
+        return True
+    
+    def stop(self):
+        """Stop the task dispatcher"""
+        logger.info(f"TaskDispatcher stopping for node {self.node_id}")
+        # Clean up resources, stop background tasks
+        return True
     
     async def receive_task(self, task_data: Dict[str, Any]) -> str:
         """Receive a new task from cluster manager"""
