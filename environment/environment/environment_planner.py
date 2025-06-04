@@ -17,7 +17,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import structlog
 
-from .gpu_detector import GPUInfo, GPUVendor, AMDArchitecture, NVIDIAArchitecture, EnvironmentRequirement
+from gpu.gpu_detector import GPUInfo, GPUVendor, AMDArchitecture, NVIDIAArchitecture, EnvironmentRequirement
 
 logger = structlog.get_logger(__name__)
 
@@ -102,7 +102,7 @@ class EnvironmentPlanner:
         Group GPUs whose EnvironmentRequirement attributes match exactly.
         Return a map { spec_name: EnvironmentSpec, … }.
         """
-        grouped: Dict[Tuple[str, str, Tuple[str, ...], Tuple[str, ...]], List[EnvironmentRequirement]] = {}
+        grouped: Dict[tuple, List[EnvironmentRequirement]] = {}
 
         # Step 1: cluster by (python_env_type, framework, tuple(os_reqs), tuple(required_packages))
         for gpu_id, req in requirements.items():

@@ -15,7 +15,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import structlog
 
-from .gpu_detector import EnvironmentRequirement
+from gpu.gpu_detector import EnvironmentRequirement
 from .environment_planner import EnvironmentSpec, EnvironmentSetupResult, EnvironmentType
 
 logger = structlog.get_logger(__name__)
@@ -118,7 +118,8 @@ class VenvManager:
         )
 
         env_path = self.base_path / spec.name
-        # If venv already exists and metadata says it's good, skip
+        
+        # If venv already exists and metadata says it's good, optionally reuse
         if spec.env_type == EnvironmentType.VENV and spec.name in self.environments:
             venv = self.environments[spec.name]
             result.path = str(venv.path)
@@ -126,22 +127,25 @@ class VenvManager:
             result.installed_packages = venv.installed_packages
             result.success = True
             result.warnings.append("Using existing venv")
+            logger.info(f"Reusing existing environment: {spec.name}")
             return result
 
         try:
             if spec.env_type == EnvironmentType.VENV:
                 # Delete old if present
                 if env_path.exists():
+                    logger.info(f"Removing existing venv: {spec.name}")
                     shutil.rmtree(env_path)
 
                 # Create venv
+                logger.info(f"Creating new venv: {spec.name}")
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable, "-m", "venv", str(env_path),
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 out, err = await proc.communicate()
                 if proc.returncode != 0:
-                    result.errors.append(err.decode())
+                    result.errors.append(f"Venv creation failed: {err.decode()}")
                     return result
 
                 # Locate executables
@@ -155,12 +159,18 @@ class VenvManager:
                 result.path = str(env_path)
                 result.python_executable = str(python_exe)
 
-                # Upgrade pip in venv
+                # Upgrade pip in venv first
                 await self._run_pip(str(pip_exe), ["install", "--upgrade", "pip"], result)
 
-                # Install required_packages
+                # Install base packages
                 if spec.base_packages:
-                    await self._run_pip(str(pip_exe), ["install"] + spec.base_packages, result)
+                    # Add extra index URLs if specified
+                    pip_args = ["install"]
+                    for url in spec.pip_extra_index_urls:
+                        pip_args.extend(["--extra-index-url", url])
+                    pip_args.extend(spec.base_packages)
+                    
+                    await self._run_pip(str(pip_exe), pip_args, result)
 
                 # Record metadata
                 installed = await self._list_packages(str(pip_exe))
@@ -177,24 +187,33 @@ class VenvManager:
                 self.environments[spec.name] = venv_info
                 self._save_environment_metadata()
                 result.installed_packages = installed
-
                 result.success = True
+                logger.info(f"✅ Successfully created venv: {spec.name}")
 
             elif spec.env_type == EnvironmentType.NATIVE:
-                # System Python: just run pip install once
-                # (Note: might need elevated permissions)
+                # System Python: run pip install globally
+                logger.info(f"Installing packages to system Python for: {spec.name}")
                 result.python_executable = sys.executable
+                
+                pip_args = ["install"]
+                for url in spec.pip_extra_index_urls:
+                    pip_args.extend(["--extra-index-url", url])
+                pip_args.extend(spec.base_packages)
+                
                 try:
                     proc = await asyncio.create_subprocess_exec(
-                        "pip", "install", *spec.base_packages,
+                        "pip", *pip_args,
                         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                     )
                     out, err = await proc.communicate()
                     if proc.returncode != 0:
-                        result.errors.append(err.decode())
+                        result.errors.append(f"System pip install failed: {err.decode()}")
                         return result
+                    
                     result.installed_packages = spec.base_packages
                     result.success = True
+                    logger.info(f"✅ Successfully installed to system Python: {spec.name}")
+                    
                 except FileNotFoundError:
                     result.errors.append("System pip not found")
                     return result
@@ -204,27 +223,34 @@ class VenvManager:
                 return result
 
         except Exception as e:
-            result.errors.append(str(e))
+            result.errors.append(f"Environment creation exception: {str(e)}")
+            logger.error(f"Environment creation failed: {spec.name}", error=str(e))
 
         return result
 
     async def _run_pip(self, pip_path: str, args: List[str], result: EnvironmentSetupResult):
-        """Helper to run pip (either venv-pip or system pip)"""
+        """Helper to run pip commands and capture errors"""
         try:
+            logger.debug(f"Running pip: {pip_path} {' '.join(args)}")
             proc = await asyncio.create_subprocess_exec(
                 pip_path, *args,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             out, err = await proc.communicate()
             if proc.returncode != 0:
-                result.errors.append(err.decode())
+                error_msg = f"Pip command failed: {err.decode()}"
+                result.errors.append(error_msg)
+                logger.warning(error_msg)
+            else:
+                logger.debug(f"Pip command succeeded: {out.decode()[:200]}...")
         except Exception as e:
-            result.errors.append(str(e))
+            error_msg = f"Pip execution exception: {str(e)}"
+            result.errors.append(error_msg)
+            logger.error(error_msg)
 
     async def _list_packages(self, pip_path: str) -> List[str]:
         """
-        Return the list of installed packages from `pip list --format=json`.
-        Useful to record metadata.
+        Return the list of installed packages from pip list.
         """
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -235,9 +261,9 @@ class VenvManager:
             if proc.returncode == 0:
                 import json as _json
                 data = _json.loads(out.decode())
-                return [pkg["name"] + "==" + pkg["version"] for pkg in data]
-        except Exception:
-            pass
+                return [f"{pkg['name']}=={pkg['version']}" for pkg in data]
+        except Exception as e:
+            logger.warning(f"Failed to list packages: {str(e)}")
         return []
     
     async def _create_venv(self, spec: EnvironmentSpec, result: EnvironmentSetupResult) -> EnvironmentSetupResult:

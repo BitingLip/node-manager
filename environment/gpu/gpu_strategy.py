@@ -148,40 +148,25 @@ def analyze_gpu_list(gpu_list: List[Any]) -> GPUStrategyResult:
             "architecture": getattr(gpu, 'architecture', 'unknown').lower()
         }
         gpu_details.append(gpu_info)
+          # Use string-based detection to avoid circular imports
+        vendor = str(getattr(gpu, 'vendor', '')).lower()
+        arch = str(getattr(gpu, 'architecture', '')).lower()
         
-        # Import here to avoid circular imports
-        try:
-            from .gpu_detector import GPUVendor, AMDArchitecture
-            
-            if hasattr(gpu, 'vendor') and gpu.vendor == GPUVendor.AMD:
-                arch = gpu.architecture.lower()
-                if arch in ('rdna1', 'rdna2'):
-                    rdna1_2 += 1
-                elif arch in ('rdna3', 'rdna4'):
-                    rdna3_4 += 1
-                else:
-                    other += 1
-            elif hasattr(gpu, 'vendor') and gpu.vendor == GPUVendor.NVIDIA:
-                nvidia += 1
+        # Handle enum values properly
+        if hasattr(gpu, 'vendor') and hasattr(gpu.vendor, 'value'):
+            vendor = gpu.vendor.value.lower()
+        
+        if 'amd' in vendor:
+            if any(x in arch for x in ['rdna1', 'rdna2']):
+                rdna1_2 += 1
+            elif any(x in arch for x in ['rdna3', 'rdna4']):
+                rdna3_4 += 1
             else:
                 other += 1
-                
-        except ImportError:
-            # Fallback to string-based detection
-            vendor = str(getattr(gpu, 'vendor', '')).lower()
-            arch = str(getattr(gpu, 'architecture', '')).lower()
-            
-            if 'amd' in vendor:
-                if any(x in arch for x in ['rdna1', 'rdna2']):
-                    rdna1_2 += 1
-                elif any(x in arch for x in ['rdna3', 'rdna4']):
-                    rdna3_4 += 1
-                else:
-                    other += 1
-            elif 'nvidia' in vendor:
-                nvidia += 1
-            else:
-                other += 1
+        elif 'nvidia' in vendor:
+            nvidia += 1
+        else:
+            other += 1
 
     total = len(gpu_list)
     details = {
