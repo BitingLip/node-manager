@@ -359,14 +359,13 @@ class BaseInferenceWorker(ABC):
             "is_loaded": self.is_loaded
         }
         
-        if self.model is not None:
+        if self.model is not None and hasattr(self.model, 'config'):
             # Add model-specific info
-            if hasattr(self.model, 'config'):
-                info.update({
-                    "model_type": getattr(self.model.config, 'model_type', 'unknown'),
-                    "num_parameters": sum(p.numel() for p in self.model.parameters()),
-                    "vocab_size": getattr(self.model.config, 'vocab_size', None)
-                })
+            info.update({
+                "model_type": getattr(self.model.config, 'model_type', 'unknown'),
+                "num_parameters": sum(p.numel() for p in self.model.parameters()),
+                "vocab_size": getattr(self.model.config, 'vocab_size', None)
+            })
         
         return info
     
