@@ -9,7 +9,6 @@ import platform
 import subprocess
 import os
 import sys
-import wmi
 from typing import Dict, List, Optional, Any, NamedTuple
 from enum import Enum
 from dataclasses import dataclass
@@ -449,145 +448,203 @@ class GPUDetector:
             return self._get_amd_requirements(
                 GPUInfo(**{**gpu_info.__dict__, "architecture": AMDArchitecture.RDNA2.value})
             )
-    
-    def plan_environments(self, gpus: Optional[List[GPUInfo]] = None) -> Dict[str, List[EnvironmentRequirement]]:
-        """Plan environment setup for detected GPUs"""
-        if gpus is None:
-            gpus = self.detected_gpus
-        
-        # Group GPUs by environment requirements
-        env_groups = {}
-        
-        for gpu in gpus:
-            req = self.get_environment_requirements(gpu)
-            
-            # Create environment key based on framework and env type
-            env_key = f"{req.framework}_{req.python_env_type}"
-            
-            if env_key not in env_groups:
-                env_groups[env_key] = []
-            
-            env_groups[env_key].append(req)
-        
-        logger.info("Environment planning completed", groups=list(env_groups.keys()))
-        return env_groups
-    
+    def get_environment_requirements_all(self) -> Dict[str, EnvironmentRequirement]:
+        """
+        Build environment requirements for each GPU, using unified strategy from gpu_strategy.py.
+        Returns a dict: { gpu_id: EnvironmentRequirement, … }
+        """
+        if not self.detected_gpus:
+            raise RuntimeError("Call detect_all_gpus() first.")
+
+        # Import here to avoid circular imports
+        from .gpu_strategy import analyze_gpu_list, GPUStrategyType, get_strategy_requirements
+
+        strategy_info = analyze_gpu_list(self.detected_gpus)
+        strategy = strategy_info.strategy
+        os_type = strategy_info.os_type
+
+        reqs: Dict[str, EnvironmentRequirement] = {}
+        for gpu in self.detected_gpus:
+            # Use unified strategy to decide python_env_type & framework
+            if strategy == GPUStrategyType.SYSTEM_PYTHON:
+                py_env = "native"
+                if gpu.vendor == GPUVendor.AMD:
+                    # RDNA1/2 DirectML on Windows
+                    framework = "directml"
+                    min_driver = "23.40.27.06"
+                    pkgs = ["torch-directml>=0.2.0", "onnxruntime-directml>=1.16.0", "transformers>=4.35.0"]
+                    os_reqs = ["windows_native"]
+                    conflicts = ["venv", "wsl", "torch", "torch-rocm"]
+                    validation = "validate_directml.py"
+                else:
+                    # If somehow only AMD RDNA1/2 but GPU isn't AMD, fallback to CPU
+                    framework = "pytorch"
+                    min_driver = ""
+                    pkgs = ["torch>=2.1.0", "transformers>=4.35.0"]
+                    os_reqs = []
+                    conflicts = []
+                    validation = "validate_cpu.py"
+
+            elif strategy == GPUStrategyType.VENV_WSL:
+                py_env = "venv"
+                if gpu.vendor == GPUVendor.NVIDIA:
+                    framework = "pytorch_cuda"
+                    min_driver = "526.0"
+                    pkgs = ["torch>=2.1.0+cu118", "torchvision>=0.16.0+cu118", "torchaudio>=2.1.0", "transformers>=4.35.0"]
+                    os_reqs = ["linux_native", "windows_wsl"]
+                    conflicts = ["torch-directml", "torch-rocm"]
+                    validation = "validate_nvidia.py"
+                elif gpu.vendor == GPUVendor.AMD:
+                    # AMD RDNA3/4 ROCm or Linux
+                    framework = "pytorch_rocm"
+                    min_driver = "6.4.1"  # ROCm
+                    pkgs = ["torch>=2.1.0+rocm6.4.1", "torchvision>=0.16.0+rocm6.4.1", "transformers>=4.35.0"]
+                    os_reqs = ["linux_native", "windows_wsl"]
+                    conflicts = ["torch-directml", "torch+cu118"]
+                    validation = "validate_rocm.py"
+                else:
+                    # Unknown vendor - fallback to CPU
+                    framework = "pytorch"
+                    min_driver = ""
+                    pkgs = ["torch>=2.1.0", "transformers>=4.35.0"]
+                    os_reqs = []
+                    conflicts = []
+                    validation = "validate_cpu.py"
+
+            elif strategy == GPUStrategyType.MIXED:
+                # For mixed, create per-GPU requirements based on individual GPU type
+                if gpu.vendor == GPUVendor.AMD:
+                    arch = AMDArchitecture(gpu.architecture)
+                    if arch in [AMDArchitecture.RDNA1, AMDArchitecture.RDNA2]:
+                        py_env = "native"   # Force RDNA1/2 to native
+                        framework = "directml"
+                        min_driver = "23.40.27.06"
+                        pkgs = ["torch-directml>=0.2.0", "onnxruntime-directml>=1.16.0", "transformers>=4.35.0"]
+                        os_reqs = ["windows_native"]
+                        conflicts = ["venv", "wsl", "torch", "torch-rocm"]
+                        validation = "validate_directml.py"
+                    else:
+                        py_env = "venv"
+                        framework = "pytorch_rocm"
+                        min_driver = "6.4.1"
+                        pkgs = ["torch>=2.1.0+rocm6.4.1", "transformers>=4.35.0"]
+                        os_reqs = ["linux_native", "windows_wsl"]
+                        conflicts = ["torch-directml"]
+                        validation = "validate_rocm.py"
+                elif gpu.vendor == GPUVendor.NVIDIA:
+                    py_env = "venv"
+                    framework = "pytorch_cuda"
+                    min_driver = "526.0"
+                    pkgs = ["torch>=2.1.0+cu118", "torchvision>=0.16.0+cu118", "transformers>=4.35.0"]
+                    os_reqs = ["linux_native", "windows_wsl"]
+                    conflicts = ["torch-directml", "torch-rocm"]
+                    validation = "validate_nvidia.py"
+                else:
+                    py_env = "venv"
+                    framework = "pytorch"
+                    min_driver = ""
+                    pkgs = ["torch>=2.1.0", "transformers>=4.35.0"]
+                    os_reqs = []
+                    conflicts = []
+                    validation = "validate_cpu.py"
+
+            else:
+                # Default fallback (e.g. CPU_FALLBACK)
+                py_env = "venv"
+                framework = "pytorch"
+                min_driver = ""
+                pkgs = ["torch>=2.1.0", "transformers>=4.35.0"]
+                os_reqs = []
+                conflicts = []
+                validation = "validate_cpu.py"
+
+            reqs[gpu.device_id] = EnvironmentRequirement(
+                gpu_info=gpu,
+                python_env_type=py_env,
+                framework=framework,
+                min_driver_version=min_driver,
+                required_packages=pkgs,
+                os_requirements=os_reqs,
+                conflicts_with=conflicts,
+                validation_script=validation,            )
+
+        return reqs
+
     def detect_os_environment(self) -> Dict[str, Any]:
-        """Detect operating system environment including WSL status"""
+        """
+        Detect operating system environment including WSL status.
+        DEPRECATED: Use gpu_strategy.detect_os_type() and detect_wsl_available() instead.
+        """
+        logger.warning("detect_os_environment is deprecated. Use gpu_strategy functions instead.")
+        from .gpu_strategy import detect_os_type, detect_wsl_available, OSType
+        
+        os_type = detect_os_type()
+        wsl_available = detect_wsl_available()
+        
         os_info = {
             "system": self.system_os,
             "release": self.os_version,
             "machine": platform.machine(),
-            "is_wsl": False,
-            "wsl_version": None,
-            "wsl_available": False
+            "is_wsl": os_type == OSType.WINDOWS_WSL,
+            "wsl_version": "2.0" if wsl_available else None,
+            "wsl_available": wsl_available
         }
-        
-        # Check for WSL if running on Linux
-        if self.system_os == "linux":
-            try:
-                with open('/proc/version', 'r') as f:
-                    version_info = f.read().lower()
-                    if 'microsoft' in version_info or 'wsl' in version_info:
-                        os_info["is_wsl"] = True
-                        if 'wsl2' in version_info:
-                            os_info["wsl_version"] = "2"
-                        else:
-                            os_info["wsl_version"] = "1"
-                        logger.info("WSL environment detected", version=os_info["wsl_version"])
-            except Exception as e:
-                logger.debug("Could not detect WSL status", error=str(e))
-        
-        # Check if WSL is available on Windows
-        elif self.system_os == "windows":
-            try:
-                result = subprocess.run(["wsl", "--list", "--quiet"], 
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0 and result.stdout.strip():
-                    os_info["wsl_available"] = True
-                    distributions = [
-                        dist.strip() for dist in result.stdout.split('\n') 
-                        if dist.strip()
-                    ]
-                    os_info["wsl_distributions"] = distributions
-                    logger.info("WSL available on Windows", distributions=distributions)
-                else:
-                    os_info["wsl_available"] = False
-            except Exception as e:
-                logger.debug("WSL not available or accessible", error=str(e))
-                os_info["wsl_available"] = False
         
         return os_info
 
     def determine_environment_strategy(self, gpus: Optional[List[GPUInfo]] = None) -> Dict[str, Any]:
-        """Determine optimal environment strategy based on detected GPUs and OS"""
+        """
+        Determine optimal environment strategy based on detected GPUs and OS.
+        DEPRECATED: Use gpu_strategy.analyze_gpu_list() instead.
+        """
+        logger.warning("determine_environment_strategy is deprecated. Use gpu_strategy.analyze_gpu_list() instead.")
         if gpus is None:
             gpus = self.detected_gpus
         
-        os_info = self.detect_os_environment()
+        from .gpu_strategy import analyze_gpu_list, GPUStrategyType
         
-        # Categorize GPUs by environment requirements
-        rdna1_rdna2_count = 0
-        modern_gpu_count = 0  # RDNA3+, NVIDIA
+        strategy_result = analyze_gpu_list(gpus)
         
-        for gpu in gpus:
-            if gpu.vendor == GPUVendor.AMD:
-                arch = AMDArchitecture(gpu.architecture)
-                if arch in [AMDArchitecture.RDNA1, AMDArchitecture.RDNA2]:
-                    rdna1_rdna2_count += 1
-                elif arch in [AMDArchitecture.RDNA3, AMDArchitecture.RDNA4]:
-                    modern_gpu_count += 1
-            elif gpu.vendor == GPUVendor.NVIDIA:
-                modern_gpu_count += 1
-        
-        # Determine strategy
-        if rdna1_rdna2_count > 0 and modern_gpu_count == 0:
-            # Only RDNA1/2 - must use native Windows
-            strategy = {
-                "type": "native_windows_required",
-                "reason": "RDNA1/2 GPUs require DirectML on native Windows",
-                "environment": "system_python",
-                "use_wsl": False,
-                "use_venv": False
-            }
-        elif rdna1_rdna2_count > 0 and modern_gpu_count > 0:
-            # Mixed setup
-            strategy = {
-                "type": "mixed_environment",
-                "reason": "Mixed GPU setup requires separate environments",
-                "environment": "separate_per_gpu_type",
-                "use_wsl": os_info["wsl_available"],
-                "use_venv": True
-            }
-        elif modern_gpu_count > 0:
-            # Only modern GPUs - prefer venv/WSL
-            strategy = {
-                "type": "venv_preferred",
-                "reason": "Modern GPUs support venv and WSL environments",
-                "environment": "venv_wsl" if os_info["wsl_available"] else "venv",
-                "use_wsl": os_info["wsl_available"],
-                "use_venv": True
-            }
+        # Convert to old format for compatibility
+        if strategy_result.strategy == GPUStrategyType.SYSTEM_PYTHON:
+            strategy_type = "native_windows_required"
+            reason = "RDNA1/2 GPUs require DirectML on native Windows"
+            environment = "system_python"
+            use_wsl = False
+            use_venv = False
+        elif strategy_result.strategy == GPUStrategyType.MIXED:
+            strategy_type = "mixed_environment"
+            reason = "Mixed GPU setup requires separate environments"
+            environment = "separate_per_gpu_type"
+            use_wsl = strategy_result.wsl_available
+            use_venv = True
+        elif strategy_result.strategy == GPUStrategyType.VENV_WSL:
+            strategy_type = "venv_preferred"
+            reason = "Modern GPUs support venv and WSL environments"
+            environment = "venv_wsl" if strategy_result.wsl_available else "venv"
+            use_wsl = strategy_result.wsl_available
+            use_venv = True
         else:
-            # No GPUs or unknown - default venv
-            strategy = {
-                "type": "default_venv",
-                "reason": "No specific GPU requirements",
-                "environment": "venv",
-                "use_wsl": False,
-                "use_venv": True
+            strategy_type = "default_venv"
+            reason = "No specific GPU requirements"
+            environment = "venv"
+            use_wsl = False
+            use_venv = True
+        
+        return {
+            "type": strategy_type,
+            "reason": reason,
+            "environment": environment,
+            "use_wsl": use_wsl,
+            "use_venv": use_venv,
+            "os_info": {
+                "system": self.system_os,
+                "is_wsl": strategy_result.os_type.name == "WINDOWS_WSL",
+                "wsl_available": strategy_result.wsl_available
+            },
+            "gpu_breakdown": {
+                "rdna1_rdna2": strategy_result.details.get("rdna1_2_count", 0),
+                "modern_gpus": strategy_result.details.get("rdna3_4_count", 0) + strategy_result.details.get("nvidia_count", 0),
+                "total": len(gpus)
             }
-        
-        strategy["os_info"] = os_info
-        strategy["gpu_breakdown"] = {
-            "rdna1_rdna2": rdna1_rdna2_count,
-            "modern_gpus": modern_gpu_count,
-            "total": len(gpus)
         }
-        
-        logger.info("Environment strategy determined", 
-                   strategy_type=strategy["type"],
-                   rdna1_rdna2=rdna1_rdna2_count,
-                   modern_gpus=modern_gpu_count)
-        
-        return strategy

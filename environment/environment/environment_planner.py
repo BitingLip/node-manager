@@ -87,8 +87,7 @@ class EnvironmentPlanner:
         # Environment specifications
         self.env_specs = {}
         self.created_environments = {}
-        
-        # Driver version cache
+          # Driver version cache
         self._driver_versions = {}
         
         logger.info("EnvironmentPlanner initialized", 
@@ -96,24 +95,87 @@ class EnvironmentPlanner:
                    os=self.system_os,
                    python=self.python_version)
     
-    def plan_environments(self, requirements: List[EnvironmentRequirement]) -> Dict[str, EnvironmentSpec]:
-        """Plan optimal environments for given requirements"""
-        logger.info(f"Planning environments for {len(requirements)} GPU requirements")
-        
-        # Group requirements by compatibility
-        env_groups = self._group_compatible_requirements(requirements)
-        
-        # Create environment specifications
-        env_specs = {}
-        
-        for group_name, group_reqs in env_groups.items():
-            spec = self._create_environment_spec(group_name, group_reqs)
-            env_specs[spec.name] = spec
+    def plan_environments(
+        self, requirements: Dict[str, EnvironmentRequirement]
+    ) -> Dict[str, EnvironmentSpec]:
+        """
+        Group GPUs whose EnvironmentRequirement attributes match exactly.
+        Return a map { spec_name: EnvironmentSpec, … }.
+        """
+        grouped: Dict[Tuple[str, str, Tuple[str, ...], Tuple[str, ...]], List[EnvironmentRequirement]] = {}
+
+        # Step 1: cluster by (python_env_type, framework, tuple(os_reqs), tuple(required_packages))
+        for gpu_id, req in requirements.items():
+            key = (
+                req.python_env_type,
+                req.framework,
+                tuple(sorted(req.os_requirements)),
+                tuple(sorted(req.required_packages)),
+            )
+            if key not in grouped:
+                grouped[key] = []
+            grouped[key].append(req)
+
+        # Step 2: build an EnvironmentSpec for each group
+        specs: Dict[str, EnvironmentSpec] = {}
+        for idx, (key, req_list) in enumerate(grouped.items(), start=1):
+            py_env_type, framework_str, os_reqs, pkgs = key
+            target_ids = [r.gpu_info.device_id for r in req_list]
+
+            spec_name = f"{framework_str}_{py_env_type}_{len(target_ids)}gpu"
             
-        self.env_specs = env_specs
-        logger.info(f"Created {len(env_specs)} environment specifications")
-        
-        return env_specs
+            # Convert framework string to enum
+            try:
+                framework_enum = FrameworkType(framework_str.upper())
+            except ValueError:
+                # Handle custom framework names
+                if framework_str == "pytorch_cuda":
+                    framework_enum = FrameworkType.PYTORCH_CUDA
+                elif framework_str == "pytorch_rocm":
+                    framework_enum = FrameworkType.PYTORCH_ROCM
+                elif framework_str == "directml":
+                    framework_enum = FrameworkType.DIRECTML
+                else:
+                    framework_enum = FrameworkType.PYTORCH
+            
+            spec = EnvironmentSpec(
+                name=spec_name,
+                env_type=EnvironmentType(py_env_type.upper()),
+                framework=framework_enum,
+                python_version=self.python_version,
+                base_packages=list(pkgs),
+                gpu_packages=[],  # Already included in base_packages
+                additional_packages=[],
+                pip_extra_index_urls=self._determine_extra_index(framework_str),
+                environment_variables=self._env_vars_for_framework(framework_str),
+                validation_commands=[r.validation_script for r in req_list if r.validation_script],
+                conflicting_envs=list({c for r in req_list for c in r.conflicts_with}),
+                target_gpus=target_ids,
+            )
+            specs[spec_name] = spec
+
+        self.env_specs = specs
+        logger.info(f"Planned {len(specs)} environments")
+        return specs
+
+    def _determine_extra_index(self, framework_str: str) -> List[str]:
+        """Determine extra pip index URLs based on framework"""
+        if "cuda" in framework_str:
+            return ["https://download.pytorch.org/whl/cu118"]
+        if "rocm" in framework_str:
+            return ["https://download.pytorch.org/whl/rocm6.4.1"]
+        return []
+
+    def _env_vars_for_framework(self, framework_str: str) -> Dict[str, str]:
+        """Get environment variables for framework"""
+        env = {}
+        if framework_str == "directml":
+            env["TORCH_DIRECTML"] = "1"
+        elif framework_str == "pytorch_cuda":
+            env["CUDA_VISIBLE_DEVICES"] = "all"
+        elif framework_str == "pytorch_rocm":
+            env["ROCM_PATH"] = "/opt/rocm"
+        return env
     
     def _group_compatible_requirements(self, requirements: List[EnvironmentRequirement]) -> Dict[str, List[EnvironmentRequirement]]:
         """Group requirements that can share the same environment"""

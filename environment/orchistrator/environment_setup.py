@@ -1,103 +1,144 @@
 """
 Environment Setup Orchestrator
-Coordinates GPU detection, environment planning, creation, and validation
-Main entry point for setting up optimal GPU environments
+Simplified orchestrator using unified GPU strategy approach.
 """
 
 import asyncio
 import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List
 from pathlib import Path
-from dataclasses import dataclass
 import structlog
 
-from .gpu_detector import GPUDetector, GPUInfo, EnvironmentRequirement
-from .environment_planner import EnvironmentPlanner, EnvironmentSpec, EnvironmentSetupResult
-from .venv_manager import VenvManager, VenvInfo
+from .gpu_detector import GPUDetector, EnvironmentRequirement
+from .environment_planner import EnvironmentPlanner, EnvironmentSpec
+from .venv_manager import VenvManager
 from .environment_validator import EnvironmentValidator, EnvironmentValidationResult
 
 logger = structlog.get_logger(__name__)
 
 
-@dataclass
 class SetupSummary:
-    """Summary of complete environment setup"""
-    total_gpus: int
-    environments_created: int
-    environments_successful: int
-    setup_time_seconds: float
-    gpu_assignments: Dict[str, List[str]]
-    validation_results: Dict[str, bool]
-    recommendations: List[str]
-    errors: List[str]
+    def __init__(self, total_gpus, env_created, env_successful, time_s, gpu_assignments, val_results, warnings, errors):
+        self.total_gpus = total_gpus
+        self.environments_created = env_created
+        self.environments_successful = env_successful
+        self.setup_time_seconds = time_s
+        self.gpu_assignments = gpu_assignments
+        self.validation_results = val_results
+        self.warnings = warnings
+        self.errors = errors
 
 
 class EnvironmentSetupOrchestrator:
     """
-    Orchestrates complete environment setup for detected GPUs
-    Handles the full pipeline: detection -> planning -> creation -> validation
+    Orchestrates detection → planning → creation → validation
     """
-    
-    def __init__(self, base_path: Optional[Path] = None):
-        """Initialize environment setup orchestrator"""
-        self.base_path = base_path or Path.cwd() / "node_environments"
+
+    def __init__(self, base_path: Path = None):
+        self.base_path = base_path or (Path.cwd() / "node_environments")
         self.base_path.mkdir(exist_ok=True)
-        
-        # Initialize components
+
         self.gpu_detector = GPUDetector()
-        self.env_planner = EnvironmentPlanner(self.base_path / "specs")
-        self.venv_manager = VenvManager(self.base_path / "venvs")
+        self.planner = EnvironmentPlanner(self.base_path / "specs")
+        self.venv_mgr = VenvManager(self.base_path / "venvs")
         self.validator = EnvironmentValidator()
-        
-        # Track setup state
-        self.detected_gpus: List[GPUInfo] = []
-        self.environment_specs: Dict[str, EnvironmentSpec] = {}
-        self.created_environments: Dict[str, EnvironmentSetupResult] = {}
-        self.validation_results: Dict[str, EnvironmentValidationResult] = {}
-        
         logger.info("EnvironmentSetupOrchestrator initialized", base_path=str(self.base_path))
-    
-    async def setup_all_environments(self, force_recreate: bool = False) -> SetupSummary:
-        """
-        Complete environment setup pipeline
+
+    async def setup_all(self, force_recreate: bool = False) -> SetupSummary:
+        start = time.time()
+        errors: List[str] = []
+        warnings: List[str] = []
+        gpu_assignments: Dict[str, List[str]] = {}
+        val_results: Dict[str, EnvironmentValidationResult] = {}
+
+        # Step 1: Detect GPUs
+        logger.info("🔍 Step 1: Detecting GPUs")
+        detected = self.gpu_detector.detect_all_gpus()
+        total = len(detected)
         
-        Args:
-            force_recreate: Whether to recreate existing environments
-            
-        Returns:
-            SetupSummary with results
-        """
-        logger.info("Starting complete environment setup")
-        start_time = time.time()
-        
-        setup_errors = []
-        
+        if total == 0:
+            errors.append("No GPUs detected; creating CPU-only fallback.")
+            logger.warning("No GPUs detected - creating CPU fallback")
+
+        # Step 2: Build EnvironmentRequirement using unified strategy
+        logger.info("📋 Step 2: Analyzing GPU strategy and building requirements")
         try:
-            # Step 1: Detect GPUs
-            logger.info("🔍 Step 1: Detecting GPUs")
-            self.detected_gpus = self.gpu_detector.detect_all_gpus()
-            
-            if not self.detected_gpus:
-                setup_errors.append("No GPUs detected")
-                logger.warning("No GPUs detected - will create CPU-only environment")
-                # Create CPU-only environment
-                await self._create_cpu_fallback_environment()
-            
-            # Step 2: Plan environments  
-            logger.info("📋 Step 2: Planning environments")
-            requirements = []
-            for gpu in self.detected_gpus:
-                req = self.gpu_detector.get_environment_requirements(gpu)
-                requirements.append(req)
-            
-            self.environment_specs = self.env_planner.plan_environments(requirements)
-            logger.info(f"Planned {len(self.environment_specs)} environments")
-            
-            # Step 3: Create environments
-            logger.info("🏗️ Step 3: Creating environments")
-            self.created_environments = await self._create_environments(force_recreate)
-            
-            # Step 4: Validate environments
+            reqs_map = self.gpu_detector.get_environment_requirements_all()
+            logger.info(f"Generated {len(reqs_map)} environment requirements")
+        except Exception as e:
+            errors.append(f"Failed to analyze GPU requirements: {str(e)}")
+            reqs_map = {}
+
+        # Step 3: Plan environments (grouping by identical requirements)
+        logger.info("🏗️ Step 3: Planning environment specifications")
+        try:
+            specs_map = self.planner.plan_environments(reqs_map)
+            logger.info(f"Planned {len(specs_map)} environment specifications")
+        except Exception as e:
+            errors.append(f"Failed to plan environments: {str(e)}")
+            specs_map = {}
+
+        # Step 4: Create environments
+        logger.info("⚙️ Step 4: Creating virtual environments")
+        created_results = {}
+        for name, spec in specs_map.items():
+            logger.info(f"Creating environment: {name}")
+            try:
+                res = await self.venv_mgr.create_environment(spec)
+                created_results[name] = res
+                if not res.success:
+                    errors.extend([f"Failed to create {name}: {error}" for error in res.errors])
+                else:
+                    logger.info(f"✅ Successfully created: {name}")
+                
+                # Track GPU assignments
+                gpu_assignments[name] = spec.target_gpus
+                
+            except Exception as e:
+                errors.append(f"Exception creating {name}: {str(e)}")
+
+        # Step 5: Validate environments
+        logger.info("✅ Step 5: Validating environments")
+        for name, res in created_results.items():
+            if res.success:
+                logger.info(f"Validating environment: {name}")
+                try:
+                    # Get the spec to access validation commands
+                    spec = specs_map.get(name)
+                    if spec and spec.validation_commands:
+                        val_res = await self.validator.validate_environment(
+                            name, 
+                            res.python_executable, 
+                            spec.validation_commands,
+                            spec.target_gpus
+                        )
+                        val_results[name] = val_res
+                        if not val_res.overall_success:
+                            warnings.append(f"Validation failed for {name}")
+                    else:
+                        logger.info(f"No validation commands for {name}, skipping")
+                        
+                except Exception as e:
+                    warnings.append(f"Validation exception for {name}: {str(e)}")
+
+        elapsed = time.time() - start
+        success_count = len([r for r in created_results.values() if r.success])
+
+        logger.info("🎉 Environment setup completed", 
+                   total_time=f"{elapsed:.2f}s",
+                   environments_created=len(specs_map),
+                   environments_successful=success_count)
+
+        return SetupSummary(
+            total_gpus=total,
+            env_created=len(specs_map),
+            env_successful=success_count,
+            time_s=elapsed,
+            gpu_assignments=gpu_assignments,
+            val_results=val_results,
+            warnings=warnings,
+            errors=errors,
+        )
             logger.info("✅ Step 4: Validating environments")
             self.validation_results = await self._validate_environments()
             
