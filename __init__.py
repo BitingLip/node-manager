@@ -20,20 +20,40 @@ __author__ = "BitingLip Team"
 # Core components
 from .core import NodeController, ResourceManager, WorkerManager, TaskDispatcher
 
-# Worker implementations  
-from .workers import BaseWorker, LLMWorker, StableDiffusionWorker, TTSWorker, WorkerFactory
+# Worker implementations (base classes and registry)
+from .workers import (
+    BaseWorker, WorkerStatus, WorkerMetrics, 
+    WorkerPool, PoolManager,
+    WorkerRegistry, worker_registry
+)
 
-# Communication components
-from .communication import APIServer, ClusterClient, MessageQueue
+# Communication components (if they exist)
+try:
+    from .communication import APIServer, ClusterClient, MessageQueue
+except ImportError:
+    APIServer = None
+    ClusterClient = None
+    MessageQueue = None
 
 # Database components
-from .database import NodeDatabase
+try:
+    from .database import NodeDatabase
+except ImportError:
+    NodeDatabase = None
 
 # Monitoring components
-from .monitoring import HealthMonitor, MetricsCollector
+try:
+    from .monitoring import HealthMonitor, MetricsCollector
+except ImportError:
+    HealthMonitor = None
+    MetricsCollector = None
 
 # Configuration components
-from .config import NodeConfig, WorkerConfig
+try:
+    from .config import NodeConfig, WorkerConfig
+except ImportError:
+    NodeConfig = None
+    WorkerConfig = None
 
 __all__ = [
     # Core
@@ -42,32 +62,36 @@ __all__ = [
     'WorkerManager',
     'TaskDispatcher',
     
-    # Workers
+    # Workers - Base classes and registry
     'BaseWorker',
-    'LLMWorker',
-    'StableDiffusionWorker', 
-    'TTSWorker',
-    'WorkerFactory',
+    'WorkerStatus',
+    'WorkerMetrics',
+    'WorkerPool',
+    'PoolManager',
+    'WorkerRegistry',
+    'worker_registry',
     
-    # Communication
+    # Communication (if available)
     'APIServer',
     'ClusterClient',
     'MessageQueue',
     
-    # Database
+    # Database (if available)
     'NodeDatabase',
     
-    # Monitoring
+    # Monitoring (if available)
     'HealthMonitor',
     'MetricsCollector',
     
-    # Configuration
+    # Configuration (if available)
     'NodeConfig',
     'WorkerConfig'
 ]
 
 
-def create_node_manager(config_path: str = None) -> NodeController:
+from typing import Optional
+
+def create_node_manager(config_path: Optional[str] = None) -> NodeController:
     """
     Factory function to create a configured node manager instance
     
@@ -87,6 +111,4 @@ def create_node_manager(config_path: str = None) -> NodeController:
     from .config import NodeConfig
     
     config = NodeConfig(config_path)
-    controller = NodeController()
-    
-    return controller
+    return NodeController()
