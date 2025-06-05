@@ -1,52 +1,96 @@
+# resource_manager.py
+
 """
 Resource Manager
 Monitors and manages local system resources (CPU, Memory, GPU)
 Provides resource allocation and capacity planning for workers
 """
 
+import platform
 import psutil
 import logging
-from typing import Dict, List, Optional, Any
-from datetime import datetime
 import structlog
+import subprocess
+import json
+import ctypes
+from ctypes import wintypes
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 
 logger = structlog.get_logger(__name__)
+
+# ── BEGIN: Fallback GUID definition ──
+try:
+    from ctypes import GUID  # type: ignore
+except (ImportError, AttributeError):
+    class GUID(ctypes.Structure):  # type: ignore
+        _fields_ = [
+            ('Data1', wintypes.DWORD),
+            ('Data2', wintypes.WORD),
+            ('Data3', wintypes.WORD),
+            ('Data4', wintypes.BYTE * 8),
+        ]
+# ── END: Fallback GUID definition ──
+
+
+# DXGI GUIDs for factory and adapter enumeration
+# GUID for IDXGIFactory1: {770aae78-f26f-4dba-a829-253c83d1b387}
+try:
+    # Try to use string parsing if available
+    IID_IDXGIFactory1 = GUID('{770aae78-f26f-4dba-a829-253c83d1b387}')
+except (TypeError, ValueError):
+    # Fallback: construct manually from components
+    IID_IDXGIFactory1 = GUID()
+    IID_IDXGIFactory1.Data1 = 0x770aae78
+    IID_IDXGIFactory1.Data2 = 0xf26f
+    IID_IDXGIFactory1.Data3 = 0x4dba
+    IID_IDXGIFactory1.Data4 = (wintypes.BYTE * 8)(0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87)
+
+# Vendor IDs
+VENDOR_ID_NVIDIA = 0x10DE
+VENDOR_ID_AMD    = 0x1002
+VENDOR_ID_INTEL  = 0x8086
 
 
 class ResourceManager:
     """
-    Manages local system resources and provides allocation capabilities
-    Monitors CPU, memory, GPU resources and enforces limits
+    Manages local system resources and provides allocation capabilities.
+    Monitors CPU, memory, GPU resources and enforces limits.
     """
-    
+
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize resource manager"""
         self.config = config or {}
-        self.cpu_count = psutil.cpu_count()
-        self.memory_total = psutil.virtual_memory().total
-        self.gpu_devices = []
-        self.system_resources = {}
-        
+        self.cpu_physical_cores = psutil.cpu_count(logical=False) or 1
+        self.cpu_logical_cores  = psutil.cpu_count(logical=True) or 1
+        self.cpu_architecture   = platform.machine()
+        self.memory_total       = psutil.virtual_memory().total
+        self.system_resources: Dict[str, Any] = {}
+
         # Resource tracking
-        self.allocated_cpu = 0.0
-        self.allocated_memory = 0
-        self.allocated_gpu_memory = {}
-        self.worker_allocations = {}
-        
-        logger.info("ResourceManager initialized")
-    
-    def detect_resources(self):
-        """Detect available system resources - public method for external calling"""
+        self.allocated_cpu: float = 0.0
+        self.allocated_memory: int = 0
+        self.allocated_gpu_memory: Dict[int, int] = {}  # key = gpu id, value = bytes
+        self.worker_allocations: Dict[str, Dict[str, Any]] = {}
+
+        logger.info("ResourceManager initialized",
+                    cpu_cores=self.cpu_physical_cores,
+                    logical_cores=self.cpu_logical_cores,
+                    architecture=self.cpu_architecture,
+                    total_memory=self.memory_total)
+
+    def detect_resources(self) -> Dict[str, Any]:
+        """Public method to detect all system resources"""
         return self.detect_system_resources()
-    
+
     def detect_system_resources(self) -> Dict[str, Any]:
         """Detect and catalog all available system resources"""
-        resources = {
+        resources: Dict[str, Any] = {
             'cpu': {
-                'cores': self.cpu_count,
-                'logical_cores': psutil.cpu_count(logical=True),
-                'frequency': psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None,
-                'architecture': 'x86_64'  # TODO: Detect actual architecture
+                'physical_cores': self.cpu_physical_cores,
+                'logical_cores': self.cpu_logical_cores,
+                'architecture': self.cpu_architecture,
+                'frequency': None
             },
             'memory': {
                 'total': self.memory_total,
@@ -57,403 +101,550 @@ class ResourceManager:
             'network': {},
             'gpu': []
         }
-        
-        # Detect disk resources
+
+        # CPU frequency (may be None on some platforms)
+        try:
+            freq = psutil.cpu_freq()
+            resources['cpu']['frequency'] = freq._asdict() if freq else None
+        except Exception as e:
+            logger.warning("Unable to get CPU frequency", error=e)
+
+        # Detect disk partitions
         try:
             for partition in psutil.disk_partitions():
-                if partition.device:
+                try:
                     usage = psutil.disk_usage(partition.mountpoint)
                     resources['disk'][partition.device] = {
                         'mountpoint': partition.mountpoint,
                         'fstype': partition.fstype,
                         'total': usage.total,
                         'used': usage.used,
-                        'free': usage.free
+                        'free': usage.free,
+                        'percent': usage.percent
                     }
+                except Exception:
+                    # Skip inaccessible mountpoints
+                    continue
         except Exception as e:
-            logger.warning(f"Failed to detect disk resources: {e}")
-        
+            logger.warning("Failed to detect disk resources", error=e)
+
         # Detect network interfaces
         try:
-            for interface, addresses in psutil.net_if_addrs().items():
-                resources['network'][interface] = [
-                    {
-                        'family': addr.family.name,
+            for iface, addrs in psutil.net_if_addrs().items():
+                resources['network'][iface] = []
+                for addr in addrs:
+                    fam = getattr(addr.family, 'name', str(addr.family))
+                    resources['network'][iface].append({
+                        'family': fam,
                         'address': addr.address,
                         'netmask': addr.netmask,
                         'broadcast': addr.broadcast
-                    }
-                    for addr in addresses
-                ]
+                    })
         except Exception as e:
-            logger.warning(f"Failed to detect network resources: {e}")
-        
+            logger.warning("Failed to detect network resources", error=e)
+
         # Detect GPU resources
         try:
-            resources['gpu'] = self.get_gpu_info()
+            gpu_list = self.get_gpu_info()
+            resources['gpu'] = gpu_list
         except Exception as e:
-            logger.warning(f"Failed to detect GPU resources: {e}")
-        
-        # Cache the detected resources
+            logger.warning("Failed to detect GPU resources", error=e)
+
+        # Cache
         self.system_resources = resources
-        logger.info(f"Detected system resources: {len(resources['gpu'])} GPUs, {self.cpu_count} CPU cores, {self.memory_total // (1024**3)}GB RAM")
-        
+        logger.info(
+            "Detected system resources",
+            cpu=f"{self.cpu_physical_cores}C/{self.cpu_logical_cores}L",
+            memory_gb=f"{self.memory_total // (1024**3)}GB",
+            gpus=len(resources['gpu'])
+        )
         return resources
-    
+
     def get_current_usage(self) -> Dict[str, Any]:
-        """Get current resource utilization"""
+        """Get current resource utilization (CPU, memory, disk, network, GPU)"""
         try:
-            # Get current CPU usage
+            # CPU usage
             cpu_percent = psutil.cpu_percent(interval=1)
-            
-            # Get current memory usage
-            memory = psutil.virtual_memory()
-            
-            # Get current disk usage for main disk
+
+            # Memory usage
+            mem = psutil.virtual_memory()
+
+            # Disk usage for root '/'
             disk_usage = {}
             try:
-                main_disk = psutil.disk_usage('/')
+                root = '/'
+                du = psutil.disk_usage(root)
                 disk_usage = {
-                    'total': main_disk.total,
-                    'used': main_disk.used,
-                    'free': main_disk.free,
-                    'percent': (main_disk.used / main_disk.total) * 100
+                    'total': du.total,
+                    'used': du.used,
+                    'free': du.free,
+                    'percent': du.percent
                 }
-            except:
-                # Windows fallback
+            except Exception:
+                # Windows fallback: 'C:\\'
                 try:
-                    main_disk = psutil.disk_usage('C:\\')
+                    du = psutil.disk_usage('C:\\')
                     disk_usage = {
-                        'total': main_disk.total,
-                        'used': main_disk.used,
-                        'free': main_disk.free,
-                        'percent': (main_disk.used / main_disk.total) * 100
+                        'total': du.total,
+                        'used': du.used,
+                        'free': du.free,
+                        'percent': du.percent
                     }
                 except Exception as e:
-                    logger.warning(f"Failed to get disk usage: {e}")
-                    disk_usage = {'total': 0, 'used': 0, 'free': 0, 'percent': 0}
-            
-            # Get network I/O
-            network_io = psutil.net_io_counters()
-            
-            usage_data = {
+                    logger.warning("Failed to get disk usage", error=e)
+                    disk_usage = {
+                        'total': 0, 'used': 0, 'free': 0, 'percent': 0.0
+                    }
+
+            # Network I/O
+            net_io = psutil.net_io_counters()
+
+            usage_data: Dict[str, Any] = {
                 'timestamp': datetime.now().isoformat(),
-                'cpu_usage': cpu_percent,
-                'memory_usage': memory.used,
-                'memory_total': memory.total,
-                'memory_percent': memory.percent,
-                'disk_usage': disk_usage['used'],
-                'disk_total': disk_usage['total'],
-                'disk_percent': disk_usage['percent'],
-                'network_rx': network_io.bytes_recv if network_io else 0,
-                'network_tx': network_io.bytes_sent if network_io else 0,
+                'cpu_percent': cpu_percent,
+                'memory_used': mem.used,
+                'memory_total': mem.total,
+                'memory_percent': mem.percent,
+                'disk_used': disk_usage.get('used', 0),
+                'disk_total': disk_usage.get('total', 0),
+                'disk_percent': disk_usage.get('percent', 0.0),
+                'network_rx': getattr(net_io, 'bytes_recv', 0),
+                'network_tx': getattr(net_io, 'bytes_sent', 0),
                 'gpu_memory_usage': {},
                 'gpu_memory_total': {}
             }
-            
-            # Add GPU usage if available
+
+            # GPU memory usage
             try:
                 gpu_usage = self._get_gpu_usage()
                 usage_data['gpu_memory_usage'] = gpu_usage.get('memory_usage', {})
                 usage_data['gpu_memory_total'] = gpu_usage.get('memory_total', {})
             except Exception as e:
-                logger.debug(f"GPU usage not available: {e}")
-            
+                logger.debug("GPU usage not available", error=e)
+
             return usage_data
-            
+
         except Exception as e:
-            logger.error(f"Failed to get current resource usage: {e}")
+            logger.error("Failed to get current resource usage", error=e)
             return {
                 'timestamp': datetime.now().isoformat(),
-                'cpu_usage': 0.0,
-                'memory_usage': 0,
+                'cpu_percent': 0.0,
+                'memory_used': 0,
                 'memory_total': self.memory_total,
-                'disk_usage': 0,
+                'memory_percent': 0.0,
+                'disk_used': 0,
                 'disk_total': 0,
+                'disk_percent': 0.0,
                 'network_rx': 0,
                 'network_tx': 0,
                 'gpu_memory_usage': {},
                 'gpu_memory_total': {}
             }
-    
+
     def allocate_resources(self, worker_id: str, requirements: Dict[str, Any]) -> bool:
-        """Allocate resources for a worker"""
+        """
+        Allocate resources for a worker.
+        requirements keys:
+         - cpu_cores: int
+         - memory_mb: int
+         - gpu_memory: Dict[int, int]  # {gpu_id: mb}
+        """
         try:
-            # Check if resources are available
             if not self.can_allocate(requirements):
-                logger.warning(f"Cannot allocate resources for worker {worker_id}: insufficient resources")
+                logger.warning(
+                    "Cannot allocate resources: insufficient resources",
+                    worker_id=worker_id,
+                    requirements=requirements
+                )
                 return False
-            
+
             # Allocate CPU
             cpu_cores = requirements.get('cpu_cores', 1)
             self.allocated_cpu += cpu_cores
-            
-            # Allocate memory
-            memory_mb = requirements.get('memory_mb', 512)
-            self.allocated_memory += memory_mb * 1024 * 1024  # Convert to bytes
-            
-            # Allocate GPU memory if requested
-            gpu_memory = requirements.get('gpu_memory', {})
-            for gpu_id, memory_mb in gpu_memory.items():
-                if gpu_id not in self.allocated_gpu_memory:
-                    self.allocated_gpu_memory[gpu_id] = 0
-                self.allocated_gpu_memory[gpu_id] += memory_mb * 1024 * 1024  # Convert to bytes
-            
-            # Track allocation for this worker
-            if not hasattr(self, 'worker_allocations'):
-                self.worker_allocations = {}
-            
-            self.worker_allocations[worker_id] = requirements
-            
-            logger.info(f"Allocated resources for worker {worker_id}: {requirements}")
+
+            # Allocate memory (convert MB → bytes)
+            mem_mb = requirements.get('memory_mb', 512)
+            mem_bytes = mem_mb * 1024 * 1024
+            self.allocated_memory += mem_bytes
+
+            # Allocate GPU memory
+            gpu_reqs: Dict[int, int] = requirements.get('gpu_memory', {})
+            for gpu_id, mb in gpu_reqs.items():
+                bytes_req = mb * 1024 * 1024
+                self.allocated_gpu_memory[gpu_id] = (
+                    self.allocated_gpu_memory.get(gpu_id, 0) + bytes_req
+                )
+
+            # Track per-worker requirements
+            self.worker_allocations[worker_id] = {
+                'cpu_cores': cpu_cores,
+                'memory_mb': mem_mb,
+                'gpu_memory': gpu_reqs.copy()
+            }
+
+            logger.info(
+                "Allocated resources for worker",
+                worker_id=worker_id,
+                requirements=requirements
+            )
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to allocate resources for worker {worker_id}: {e}")
+            logger.error("Failed to allocate resources", error=e, worker_id=worker_id)
             return False
-    
+
     def release_resources(self, worker_id: str):
-        """Release resources from a worker"""
+        """
+        Release resources previously allocated to a worker.
+        """
         try:
-            if not hasattr(self, 'worker_allocations'):
-                return
-            
             if worker_id not in self.worker_allocations:
-                logger.warning(f"No resource allocation found for worker {worker_id}")
+                logger.warning("No resources to release for worker", worker_id=worker_id)
                 return
-            
-            requirements = self.worker_allocations[worker_id]
-            
+
+            reqs = self.worker_allocations[worker_id]
+
             # Release CPU
-            cpu_cores = requirements.get('cpu_ores', 1)
-            self.allocated_cpu = max(0, self.allocated_cpu - cpu_cores)
-            
+            cpu_cores = reqs.get('cpu_cores', 1)
+            self.allocated_cpu = max(0.0, self.allocated_cpu - cpu_cores)
+
             # Release memory
-            memory_mb = requirements.get('memory_mb', 512)
-            self.allocated_memory = max(0, self.allocated_memory - (memory_mb * 1024 * 1024))
-            
+            mem_mb = reqs.get('memory_mb', 512)
+            mem_bytes = mem_mb * 1024 * 1024
+            self.allocated_memory = max(0, self.allocated_memory - mem_bytes)
+
             # Release GPU memory
-            gpu_memory = requirements.get('gpu_memory', {})
-            for gpu_id, memory_mb in gpu_memory.items():
+            gpu_reqs: Dict[int, int] = reqs.get('gpu_memory', {})
+            for gpu_id, mb in gpu_reqs.items():
+                bytes_req = mb * 1024 * 1024
                 if gpu_id in self.allocated_gpu_memory:
                     self.allocated_gpu_memory[gpu_id] = max(
-                        0, 
-                        self.allocated_gpu_memory[gpu_id] - (memory_mb * 1024 * 1024)
+                        0,
+                        self.allocated_gpu_memory[gpu_id] - bytes_req
                     )
-            
-            # Remove allocation tracking
+
+            # Remove the worker from tracking
             del self.worker_allocations[worker_id]
-            
-            logger.info(f"Released resources for worker {worker_id}")
-            
+            logger.info("Released resources for worker", worker_id=worker_id)
+
         except Exception as e:
-            logger.error(f"Failed to release resources for worker {worker_id}: {e}")
-    
+            logger.error("Failed to release resources", error=e, worker_id=worker_id)
+
     def can_allocate(self, requirements: Dict[str, Any]) -> bool:
-        """Check if resources can be allocated"""
+        """
+        Check if the requested resources can be allocated.
+        """
         try:
-            # Check CPU availability
-            cpu_cores = requirements.get('cpu_cores', 1)
-            if self.allocated_cpu + cpu_cores > self.cpu_count:
+            # 1) CPU
+            req_cpu = requirements.get('cpu_cores', 1)
+            if (self.allocated_cpu + req_cpu) > self.cpu_physical_cores:
                 return False
-            
-            # Check memory availability
-            memory_mb = requirements.get('memory_mb', 512)
-            memory_bytes = memory_mb * 1024 * 1024
-            available_memory = psutil.virtual_memory().available
-            if self.allocated_memory + memory_bytes > available_memory:
+
+            # 2) Memory
+            req_mem_mb = requirements.get('memory_mb', 512)
+            req_mem_bytes = req_mem_mb * 1024 * 1024
+            available_mem = psutil.virtual_memory().available
+            if (self.allocated_memory + req_mem_bytes) > available_mem:
                 return False
-            
-            # Check GPU memory if requested
-            gpu_memory = requirements.get('gpu_memory', {})
-            for gpu_id, memory_mb in gpu_memory.items():
-                memory_bytes = memory_mb * 1024 * 1024
-                current_allocated = self.allocated_gpu_memory.get(gpu_id, 0)
-                
-                # TODO: Get actual GPU memory total from detection
-                gpu_total = 8 * 1024 * 1024 * 1024  # Default 8GB, should be detected
-                
-                if current_allocated + memory_bytes > gpu_total:
+
+            # 3) GPU memory
+            gpu_reqs: Dict[int, int] = requirements.get('gpu_memory', {})
+            # Build a local map of detected GPU totals
+            gpu_totals: Dict[int, int] = {
+                gpu['id']: gpu['memory_total']
+                for gpu in self.system_resources.get('gpu', [])
+            }
+
+            for gpu_id, mb in gpu_reqs.items():
+                req_bytes = mb * 1024 * 1024
+                already = self.allocated_gpu_memory.get(gpu_id, 0)
+                total = gpu_totals.get(gpu_id, 0)
+                if total == 0:
+                    # If GPU not detected or no total known, deny allocation
                     return False
-            
+                if (already + req_bytes) > total:
+                    return False
+
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to check resource availability: {e}")
+            logger.error("Failed to check resource availability", error=e)
             return False
-    
+
     def get_gpu_info(self) -> List[Dict[str, Any]]:
-        """Get detailed GPU information"""
-        gpu_devices = []
-        
-        # Try NVIDIA GPU detection
+        """
+        Get detailed GPU information for NVIDIA, AMD, and Intel.
+        Attempts:
+         1) DXGI enumeration (all vendors)
+         2) NVIDIA-specific via NVML for driver versions & usage
+         3) Fallback WMI for AMD/Intel if DXGI not available
+        """
+        gpu_list: List[Dict[str, Any]] = []
+
+        # Try DXGI enumeration first
         try:
-            import pynvml
-            pynvml.nvmlInit()
-            device_count = pynvml.nvmlDeviceGetCount()
-            
-            for i in range(device_count):
-                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                name = pynvml.nvmlDeviceGetName(handle).decode('utf-8')
-                memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            dxgi_gpus = self._detect_gpus_dxgi()
+            if dxgi_gpus:
+                gpu_list.extend(dxgi_gpus)
+        except Exception as e:
+            logger.debug("DXGI GPU detection failed", error=e)        # If any NVIDIA GPU was found, enrich via NVML
+        try:
+            try:
+                import pynvml  # type: ignore
+            except ImportError:                
+                pynvml = None
                 
-                gpu_devices.append({
-                    'id': i,
-                    'name': name,
-                    'vendor': 'NVIDIA',
-                    'memory_total': memory_info.total,
-                    'memory_used': memory_info.used,
-                    'memory_free': memory_info.free,
-                    'driver_version': pynvml.nvmlSystemGetDriverVersion().decode('utf-8')
+            if pynvml:
+                pynvml.nvmlInit()
+                driver_ver = pynvml.nvmlSystemGetDriverVersion().decode('utf-8')
+                count = pynvml.nvmlDeviceGetCount()
+
+                for idx in range(count):
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(idx)
+                    name = pynvml.nvmlDeviceGetName(handle).decode('utf-8')
+                    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+
+                    # Check if already in gpu_list by vendor + name
+                    matched = False
+                    for gpu in gpu_list:
+                        if gpu['vendor'] == 'NVIDIA' and gpu['name'] == name:
+                            gpu['memory_total'] = mem_info.total
+                            gpu['memory_free']  = mem_info.free
+                            gpu['memory_used']  = mem_info.used
+                            gpu['driver_version'] = driver_ver
+                            matched = True
+                            break
+
+                    if not matched:
+                        # Add new NVIDIA entry if DXGI missed it
+                        gpu_list.append({
+                            'id': idx,
+                            'name': name,
+                            'vendor': 'NVIDIA',
+                            'memory_total': mem_info.total,
+                            'memory_used': mem_info.used,
+                            'memory_free': mem_info.free,
+                            'driver_version': driver_ver
+                        })
+
+                pynvml.nvmlShutdown()
+        except Exception as e:
+            logger.debug("NVIDIA NVML enrichment failed or NVML not installed", error=e)
+
+        # If no GPUs detected so far, try fallback WMI for AMD/Intel
+        if not gpu_list:
+            try:
+                gpu_list = self._detect_gpus_wmi()
+            except Exception as e:
+                logger.debug("WMI GPU detection failed", error=e)
+
+        if not gpu_list:
+            logger.info("No GPUs detected on this system")
+
+        # Reassign consistent IDs (0...N-1)
+        for new_id, gpu in enumerate(gpu_list):
+            gpu['id'] = new_id
+
+        return gpu_list
+
+    def _detect_gpus_dxgi(self) -> List[Dict[str, Any]]:
+        """
+        Enumerate all DXGI adapters, return vendor, name, VRAM.
+        """
+        gpus: List[Dict[str, Any]] = []
+        try:
+            dxgi = ctypes.WinDLL('dxgi.dll')
+            CreateFactory = dxgi.CreateDXGIFactory1
+            CreateFactory.argtypes = [
+                ctypes.POINTER(GUID),
+                ctypes.POINTER(ctypes.c_void_p)
+            ]
+            CreateFactory.restype = ctypes.HRESULT
+
+            pFactory = ctypes.c_void_p()
+            hr = CreateFactory(ctypes.byref(IID_IDXGIFactory1), ctypes.byref(pFactory))
+            if hr != 0 or not pFactory.value:
+                return gpus
+
+            # IDXGIFactory1 vtable index 10 → EnumAdapters1
+            factory_vtable = ctypes.POINTER(ctypes.c_void_p).from_address(int(pFactory.value))
+            EnumAdapters1_ptr = ctypes.cast(
+                factory_vtable[10],
+                ctypes.CFUNCTYPE(
+                    ctypes.HRESULT,
+                    ctypes.c_void_p,
+                    wintypes.UINT,
+                    ctypes.POINTER(ctypes.c_void_p)
+                )
+            )
+
+            adapter_index = 0
+            while True:
+                pAdapter = ctypes.c_void_p()
+                hr_enum = EnumAdapters1_ptr(pFactory, adapter_index, ctypes.byref(pAdapter))
+                if hr_enum != 0:  # DXGI_ERROR_NOT_FOUND or other failure
+                    break
+
+                if not pAdapter.value:
+                    adapter_index += 1
+                    continue
+
+                # IDXGIAdapter1 vtable index 5 → GetDesc1
+                adapter_vtable = ctypes.POINTER(ctypes.c_void_p).from_address(int(pAdapter.value))
+                GetDesc1_ptr = ctypes.cast(
+                    adapter_vtable[5],
+                    ctypes.CFUNCTYPE(
+                        ctypes.HRESULT,
+                        ctypes.c_void_p,
+                        ctypes.POINTER(self._DXGI_ADAPTER_DESC)
+                    )
+                )
+
+                desc = self._DXGI_ADAPTER_DESC()
+                hr_desc = GetDesc1_ptr(pAdapter, ctypes.byref(desc))
+                if hr_desc == 0:
+                    name = desc.Description.strip()
+                    vendor = desc.VendorId
+                    vram = desc.DedicatedVideoMemory
+
+                    if vendor == VENDOR_ID_NVIDIA:
+                        vend_str = 'NVIDIA'
+                    elif vendor == VENDOR_ID_AMD:
+                        vend_str = 'AMD'
+                    elif vendor == VENDOR_ID_INTEL:
+                        vend_str = 'Intel'
+                    else:
+                        vend_str = f"Unknown(0x{vendor:04x})"
+
+                    gpus.append({
+                        'id': adapter_index,
+                        'name': name,
+                        'vendor': vend_str,
+                        'memory_total': vram,
+                        'memory_used': 0,
+                        'memory_free': vram,
+                        'driver_version': 'Unknown'
+                    })
+
+                # Release adapter
+                Release = ctypes.CFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p)
+                release_adapter = ctypes.cast(adapter_vtable[2], Release)
+                release_adapter(pAdapter)
+
+                adapter_index += 1
+
+            # Release factory
+            Release = ctypes.CFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p)
+            release_factory = ctypes.cast(factory_vtable[2], Release)
+            release_factory(pFactory)
+
+        except Exception as e:
+            logger.debug("DXGI enumeration error", error=e)
+
+        return gpus
+
+    class _DXGI_ADAPTER_DESC(ctypes.Structure):
+        _fields_ = [
+            ('Description', wintypes.WCHAR * 128),
+            ('VendorId',   wintypes.UINT),
+            ('DeviceId',   wintypes.UINT),
+            ('SubSysId',   wintypes.UINT),
+            ('Revision',   wintypes.UINT),
+            ('DedicatedVideoMemory', ctypes.c_size_t),
+            ('DedicatedSystemMemory', ctypes.c_size_t),
+            ('SharedSystemMemory', ctypes.c_size_t),
+            ('AdapterLuid', ctypes.c_ulonglong * 2),
+        ]
+
+    def _detect_gpus_wmi(self) -> List[Dict[str, Any]]:
+        """
+        Fallback GPU detection using WMI (for AMD/Intel if DXGI fails).
+        """
+        gpus: List[Dict[str, Any]] = []
+        try:
+            try:
+                import wmi  # type: ignore
+            except ImportError:
+                wmi = None
+
+            if platform.system() != 'Windows' or wmi is None:
+                return gpus
+
+            c = wmi.WMI()
+            idx = 0
+            for gpu in c.Win32_VideoController():
+                name = gpu.Name or "Unknown GPU"
+                vendor_lower = name.lower()
+                if 'nvidia' in vendor_lower:
+                    vend_str = 'NVIDIA'
+                elif 'amd' in vendor_lower or 'radeon' in vendor_lower:
+                    vend_str = 'AMD'
+                elif 'intel' in vendor_lower:
+                    vend_str = 'Intel'
+                else:
+                    continue  # skip non-GPU or unknown vendors
+
+                # WMI reports AdapterRAM in bytes
+                mem = int(gpu.AdapterRAM or 0)
+                # If WMI says <1GB, treat as unknown
+                if mem < (1 * 1024**3):
+                    mem = 0
+
+                gpus.append({
+                    'id': idx,
+                    'name': name.strip(),
+                    'vendor': vend_str,
+                    'memory_total': mem,
+                    'memory_used': 0,
+                    'memory_free': mem,
+                    'driver_version': gpu.DriverVersion or 'Unknown'
                 })
-                
-            logger.info(f"Detected {len(gpu_devices)} NVIDIA GPU(s)")
-            
+                idx += 1
+
         except Exception as e:
-            logger.debug(f"NVIDIA GPU detection failed: {e}")
-          # Try AMD GPU detection using WMI (Windows) and other methods
-        try:
-            amd_gpus = self._detect_amd_gpus()
-            gpu_devices.extend(amd_gpus)
-            if amd_gpus:
-                logger.info(f"Detected {len(amd_gpus)} AMD GPU(s)")
-        except Exception as e:
-            logger.debug(f"AMD GPU detection failed: {e}")
-        
-        # If no GPUs detected, return empty list
-        if not gpu_devices:
-            logger.info("No GPUs detected")
-        
-        return gpu_devices
-    
-    def _get_gpu_usage(self) -> Dict[str, Dict[str, int]]:
-        """Get current GPU memory usage"""
-        usage = {
+            logger.debug("WMI GPU detection error", error=e)
+
+        return gpus
+
+    def _get_gpu_usage(self) -> Dict[str, Dict[int, int]]:
+        """
+        Returns per-GPU memory usage and total (only NVIDIA via NVML is populated).
+        All other vendors default to 0 or total = what was detected.
+        """
+        usage: Dict[str, Dict[int, int]] = {
             'memory_usage': {},
             'memory_total': {}
         }
-        
+
+        # Use system_resources cache for total values
+        for gpu in self.system_resources.get('gpu', []):
+            idx = gpu['id']
+            usage['memory_total'][idx] = gpu.get('memory_total', 0)
+            usage['memory_usage'][idx] = 0        # Enrich NVIDIA usage
         try:
-            import pynvml
-            pynvml.nvmlInit()
-            device_count = pynvml.nvmlDeviceGetCount()
-            
-            for i in range(device_count):
-                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                
-                usage['memory_usage'][str(i)] = memory_info.used
-                usage['memory_total'][str(i)] = memory_info.total
-                
-        except Exception as e:
-            logger.debug(f"Failed to get GPU usage: {e}")
-        
-        return usage
-    
-    def _detect_amd_gpus(self) -> List[Dict[str, Any]]:
-        """Detect AMD GPUs using WMI and other Windows methods"""
-        amd_gpus = []
-        
-        # Method 1: Try WMI on Windows
-        try:
-            # Check if we're on Windows first
-            import platform
-            if platform.system() != 'Windows':
-                logger.debug("Non-Windows system, skipping WMI AMD GPU detection")
-                return amd_gpus
-                
-            import wmi
-            c = wmi.WMI()
-            gpu_id = 0
-            
-            for gpu in c.Win32_VideoController():
-                if gpu.Name and ('AMD' in gpu.Name or 'Radeon' in gpu.Name):
-                    # Convert adapter RAM to bytes (WMI returns it in bytes)
-                    memory_total = int(gpu.AdapterRAM or 0)
-                    
-                    # WMI often reports incorrect memory for AMD cards, use model-based defaults
-                    if memory_total < 1024 * 1024 * 1024:  # Less than 1GB, probably wrong
-                        if 'RX 6800' in gpu.Name:
-                            memory_total = 16 * 1024 * 1024 * 1024  # 16GB for RX 6800/6800 XT
-                        else:
-                            memory_total = 8 * 1024 * 1024 * 1024   # Default 8GB for other AMD cards
-                    
-                    amd_gpus.append({
-                        'id': gpu_id,
-                        'name': gpu.Name.strip(),
-                        'vendor': 'AMD',
-                        'memory_total': memory_total,
-                        'memory_used': 0,  # Would need ROCm tools for actual usage
-                        'memory_free': memory_total,
-                        'driver_version': gpu.DriverVersion or 'Unknown',
-                        'device_id': gpu.DeviceID or f"amd_gpu_{gpu_id}",
-                        'detection_method': 'WMI',
-                        'status': 'available'
-                    })
-                    gpu_id += 1
-                    logger.debug(f"Detected AMD GPU: {gpu.Name} with {memory_total // (1024**3)}GB VRAM")
-                    
-        except ImportError:
-            logger.debug("WMI module not available for AMD GPU detection")
-        except Exception as e:
-            logger.debug(f"WMI AMD GPU detection failed: {e}")
-        
-        # Method 2: Try PowerShell fallback if WMI didn't work or failed
-        if not amd_gpus:
             try:
-                import subprocess
-                import json
-                
-                ps_command = """
-                Get-WmiObject -Class Win32_VideoController | 
-                Where-Object {$_.Name -like '*AMD*' -or $_.Name -like '*Radeon*'} | 
-                Select-Object Name, AdapterRAM, DriverVersion, DeviceID | 
-                ConvertTo-Json
-                """
-                
-                result = subprocess.run([
-                    'powershell', '-Command', ps_command
-                ], capture_output=True, text=True, timeout=15)
-                
-                if result.returncode == 0 and result.stdout.strip():
-                    gpu_data = json.loads(result.stdout)
-                    
-                    # Handle both single GPU (dict) and multiple GPUs (list)
-                    if isinstance(gpu_data, dict):
-                        gpu_data = [gpu_data]
-                    
-                    for i, gpu in enumerate(gpu_data):
-                        memory_total = int(gpu.get('AdapterRAM') or 0)
-                        
-                        # Fix incorrect memory reporting
-                        if memory_total < 1024 * 1024 * 1024:  # Less than 1GB
-                            if 'RX 6800' in gpu.get('Name', ''):
-                                memory_total = 16 * 1024 * 1024 * 1024  # 16GB for RX 6800/6800 XT
-                            else:
-                                memory_total = 8 * 1024 * 1024 * 1024   # Default 8GB
-                        
-                        amd_gpus.append({
-                            'id': i,
-                            'name': gpu.get('Name', 'Unknown AMD GPU').strip(),
-                            'vendor': 'AMD',
-                            'memory_total': memory_total,
-                            'memory_used': 0,
-                            'memory_free': memory_total,
-                            'driver_version': gpu.get('DriverVersion', 'Unknown'),
-                            'device_id': gpu.get('DeviceID', f"amd_gpu_{i}"),
-                            'detection_method': 'PowerShell_WMI',
-                            'status': 'available'
-                        })
-                        logger.debug(f"Detected AMD GPU via PowerShell: {gpu.get('Name')} with {memory_total // (1024**3)}GB VRAM")
-                        
-            except Exception as e:
-                logger.debug(f"PowerShell AMD GPU detection failed: {e}")
-        
-        logger.info(f"AMD GPU detection completed: found {len(amd_gpus)} devices")
-        return amd_gpus
-    
+                import pynvml  # type: ignore
+            except ImportError:
+                pynvml = None
+
+            if pynvml:
+                pynvml.nvmlInit()
+                count = pynvml.nvmlDeviceGetCount()
+                for i in range(count):
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                    usage['memory_total'][i] = int(mem_info.total)
+                    usage['memory_usage'][i] = int(mem_info.used)
+                pynvml.nvmlShutdown()
+        except Exception:
+            # If NVML missing or no NVIDIA, leave as-is
+            pass
+
+        return usage
+
     def monitor_resources(self) -> Dict[str, Any]:
-        """Continuous resource monitoring for metrics collection"""
-        # This method is called by the monitoring loop
-        # Return current usage for storage/reporting
+        """
+        Continuous resource monitoring for metrics collection
+        (simply returns current usage; can be called in a loop)
+        """
         return self.get_current_usage()

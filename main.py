@@ -24,9 +24,12 @@ try:
     from . import create_node_manager
 except ImportError:
     # Fallback: create a minimal version
-    def create_node_manager(config_path=None):
+    def create_node_manager(config_path=None, port=None):
         from core import NodeController
-        return NodeController()
+        config_overrides = {}
+        if port:
+            config_overrides['api'] = {'port': port}
+        return NodeController(config_path, config_overrides)
 
 
 def setup_logging(log_level: str = "INFO"):
@@ -107,14 +110,20 @@ async def main():
     
     logger.info("Starting BitingLip Node Manager", version="1.0.0")
     
-    try:
-        # Create node manager
-        node_manager = create_node_manager(args.config)
-        
-        # Setup signal handlers for graceful shutdown
+    try:        # Create node manager
+        node_manager = create_node_manager(args.config, port=args.port)
+          # Setup signal handlers for graceful shutdown
         def signal_handler(signum, frame):
             logger.info("Received shutdown signal", signal=signum)
-            asyncio.create_task(node_manager.stop())
+            # Check if stop() is async or sync
+            try:
+                if asyncio.iscoroutinefunction(node_manager.stop):
+                    asyncio.create_task(node_manager.stop())
+                else:
+                    node_manager.stop()
+            except Exception as e:
+                logger.error("Error during shutdown", error=str(e))
+                sys.exit(1)
         
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)

@@ -35,11 +35,11 @@ class NodeController:
     Coordinates between resource management, worker management, and task dispatching
     """
     
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, config_overrides: Optional[Dict[str, Any]] = None):
         """Initialize the node controller"""
         self.node_id = f"node-{uuid.uuid4().hex[:8]}"
         self.status = "initializing"
-        self.config = self._load_config(config_path)
+        self.config = self._load_config(config_path, config_overrides)
         self.hostname = socket.gethostname()
         
         # Component managers
@@ -57,7 +57,7 @@ class NodeController:
         
         logger.info(f"NodeController initializing with ID: {self.node_id}")
     
-    def _load_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
+    def _load_config(self, config_path: Optional[str] = None, config_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Load configuration from file or use defaults"""
         default_config = {
             'database': {
@@ -103,6 +103,16 @@ class NodeController:
                 
             except Exception as e:
                 logger.warning(f"Failed to load config from {config_path}: {e}, using defaults")
+        
+        # Apply config overrides if any
+        if config_overrides:
+            for section, section_config in config_overrides.items():
+                if section in default_config:
+                    # Override section with provided config
+                    default_config[section].update(section_config)
+                else:
+                    # Add new section
+                    default_config[section] = section_config
         
         return default_config
     

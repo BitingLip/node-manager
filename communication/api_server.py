@@ -40,7 +40,7 @@ class APIServer:
         
         # Register routes
         self._register_routes()
-          logger.info(f"APIServer initialized on port {port}")
+        logger.info(f"APIServer initialized on port {port}")
     
     def _register_routes(self):
         """Register API routes"""

@@ -64,8 +64,7 @@ class APIServer:
                 try:
                     status = self.node_controller.get_status()
                     return status
-                except Exception as e:
-                    return {"error": str(e)}
+                except Exception as e:                    return {"error": str(e)}
             return {"error": "Node controller not initialized"}
         
         @self.app.get("/resources")
@@ -73,8 +72,12 @@ class APIServer:
             """Get available resources"""
             if self.node_controller and self.node_controller.resource_manager:
                 try:
-                    resources = self.node_controller.resource_manager.get_available_resources()
-                    return {"resources": resources}
+                    current_usage = self.node_controller.resource_manager.get_current_usage()
+                    gpu_info = self.node_controller.resource_manager.get_gpu_info()
+                    return {
+                        "current_usage": current_usage,
+                        "gpu_info": gpu_info
+                    }
                 except Exception as e:
                     return {"error": str(e)}
             return {"error": "Resource manager not available"}

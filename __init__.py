@@ -91,24 +91,29 @@ __all__ = [
 
 from typing import Optional
 
-def create_node_manager(config_path: Optional[str] = None) -> NodeController:
+def create_node_manager(config_path: Optional[str] = None, port: Optional[int] = None) -> NodeController:
     """
     Factory function to create a configured node manager instance
     
     Args:
         config_path: Path to configuration file
+        port: Optional port override for API server
         
     Returns:
         Configured NodeController instance
-    """
-    # TODO: Implement node manager factory
+    """    # TODO: Implement node manager factory
     # 1. Load configuration
     # 2. Initialize database
     # 3. Create component instances
-    # 4. Wire components together
-    # 5. Return configured controller
+    # 4. Wire components together    # 5. Return configured controller
     
     from .config import NodeConfig
     
     config = NodeConfig(config_path)
-    return NodeController()
+    
+    # Apply port override if provided
+    config_overrides = {}
+    if port is not None:
+        config_overrides['api'] = {'port': port}
+    
+    return NodeController(config_path, config_overrides)
