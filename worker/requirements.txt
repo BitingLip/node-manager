@@ -1,0 +1,26 @@
+# Core dependencies
+torch>=2.0.0
+torch-directml>=0.2.0
+diffusers>=0.21.0
+transformers>=4.30.0
+accelerate>=0.20.0
+
+# OpenCLIP for extended prompt support (248+ tokens)
+open-clip-torch>=2.24.0
+
+# Database
+psycopg2-binary>=2.9.0
+
+# HTTP Communication
+requests>=2.28.0
+
+# System monitoring
+psutil>=5.9.0
+
+# Utilities
+Pillow>=9.0.0
+numpy>=1.24.0
+safetensors>=0.3.0
+
+# Optional optimizations
+xformers>=0.0.20; platform_system != "Windows"

@@ -1,42 +1,15 @@
-# Node Manager Requirements
+# Core dependencies
+flask>=2.3.0
+requests>=2.31.0
+psycopg2-binary>=2.9.0
+psutil>=5.9.0
 
-# Core Dependencies
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-pydantic>=2.4.0
-asyncio-mqtt>=0.13.0
-aiohttp>=3.9.0
-structlog>=23.2.0
-wmi>=1.5.0
-pynvml>=11.4.0
+# OpenCLIP for extended prompt support
+open-clip-torch>=2.24.0
 
-# Database
-psycopg2-binary>=2.9.7
-asyncpg>=0.29.0
+# Optional - for better terminal UI
+rich>=13.0.0
 
-# System Monitoring
-psutil>=5.9.6
-
-# GPU Detection and Management
-# Note: These will be installed conditionally based on hardware
-# nvidia-ml-py3>=7.352.0  # For NVIDIA GPUs
-# DirectML  # For AMD GPUs (system-wide installation required)
-
-# AI/ML Framework Dependencies (worker-specific)
-# torch>=2.1.0
-# transformers>=4.35.0
-# diffusers>=0.24.0
-# librosa>=0.10.1
-
-# Development Dependencies
-pytest>=7.4.0
+# Development/Testing
+pytest>=7.0.0
 pytest-asyncio>=0.21.0
-black>=23.9.0
-isort>=5.12.0
-mypy>=1.6.0
-
-# Optional Dependencies
-redis>=5.0.0  # For distributed message queue
-prometheus_client>=0.18.0  # For metrics export
-
-hf_xet>=1.1.0

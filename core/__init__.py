@@ -1,16 +1,27 @@
+#!/usr/bin/env python3
 """
-Node Manager Core Components
-Core orchestration and management functionality
+Core module for Node Manager
+Contains all fundamental components and business logic
 """
 
-from .node_controller import NodeController
-from .resource_manager import ResourceManager
-from .worker_manager import WorkerManager
-from .task_dispatcher import TaskDispatcher
+from .config import Config
+from .database import Database
+from .communication import Communication
+from .logger import Logger
+from .task_manager import TaskManager, TaskConfig
+from .worker_manager import WorkerManager, WorkerStatus
+from .system_monitor import SystemMonitor
+from .api_server import APIServer
 
 __all__ = [
-    'NodeController',
-    'ResourceManager', 
-    'WorkerManager',
-    'TaskDispatcher'
+    'Config',
+    'Database', 
+    'Communication',
+    'Logger',
+    'TaskManager',
+    'TaskConfig',
+    'WorkerManager', 
+    'WorkerStatus',
+    'SystemMonitor',
+    'APIServer'
 ]

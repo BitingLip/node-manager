@@ -1,0 +1,49 @@
+{    "node_manager": {
+        "host": "localhost",
+        "port": 8080,
+        "max_ram_cache_gb": 8.0,
+        "model_dir": "models",
+        "output_dir": "outputs",
+        "device_list": [0, 1, 2, 3, 4],
+        "auto_start_workers": true,
+        "parallel_worker_spawn": true,
+        "worker_spawn_delay": 0.1
+    },"database": {
+        "host": "localhost",
+        "port": 5432,
+        "name": "node_manager",
+        "user": "postgres",
+        "password": "postgres",
+        "connection_timeout": 30,
+        "max_connections": 10
+    },
+    "communication": {
+        "worker_timeout": 60,
+        "heartbeat_interval": 10,
+        "message_timeout": 30,
+        "retry_attempts": 3,
+        "api_routes": {
+            "worker_register": "/api/workers/register",
+            "worker_messages": "/api/workers/{worker_id}/messages",
+            "worker_status": "/api/workers/{worker_id}/status",
+            "submit_task": "/api/tasks/submit",
+            "task_status": "/api/tasks/{task_id}/status"
+        }
+    },    "processing": {
+        "default_model": "cyberrealistic_pony_v110",
+        "task_timeout": 300,
+        "batch_size": 4,
+        "scheduler_interval": 0.1
+    },
+    "memory": {
+        "vram_monitoring": true,
+        "cleanup_interval": 60,
+        "memory_threshold": 0.9
+    },    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - NODE_MANAGER - %(levelname)s - %(message)s",
+        "file": "logs/node_manager.log",
+        "max_size_mb": 100,
+        "backup_count": 5
+    }
+}

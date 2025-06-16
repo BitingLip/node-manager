@@ -1,0 +1,70 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "name": "node_manager",
+    "user": "postgres",
+    "password": "postgres",
+    "connection_timeout": 30,
+    "max_connections": 5
+  },
+  "communication": {
+    "node_manager_host": "localhost",
+    "node_manager_port": 8080,
+    "heartbeat_interval": 10,
+    "message_timeout": 30,
+    "retry_attempts": 3
+  },
+  "hardware": {
+    "monitoring_interval": 5,
+    "temperature_threshold": 80,
+    "vram_threshold_mb": 15000,
+    "ram_threshold_mb": 16000
+  },
+  "memory": {
+    "cleanup_threshold_mb": 500,
+    "aggressive_cleanup": false,
+    "model_cache_size": 1,
+    "ram_staging_enabled": true
+  },  "processing": {
+    "max_concurrent_tasks": 1,
+    "inference_timeout": 300,
+    "default_steps": 20,
+    "default_guidance_scale": 7.0,
+    "output_format": "png",
+    "output_quality": 95
+  },
+  "openclip": {
+    "enabled": true,
+    "model": "ViT-L-14",
+    "pretrained": "laion2b_s32b_b82k",
+    "max_tokens": 248,
+    "device": "auto",
+    "cache_dir": "./models/openclip",
+    "fallback_chunking": true,
+    "chunk_overlap": 10,
+    "models": {
+      "ViT-L-14": {
+        "pretrained": "laion2b_s32b_b82k",
+        "max_tokens": 248,
+        "recommended": true
+      },
+      "ViT-H-14": {
+        "pretrained": "laion2b_s32b_b12k",
+        "max_tokens": 248,
+        "performance": "high"
+      },
+      "ViT-g-14": {
+        "pretrained": "laion2b_s32b_b12k",
+        "max_tokens": 248,
+        "performance": "highest"
+      }
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "max_log_size_mb": 100,
+    "backup_count": 5,
+    "console_output": true
+  }
+}
