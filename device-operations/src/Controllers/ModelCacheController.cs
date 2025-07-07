@@ -258,7 +258,7 @@ public class ModelCacheController : ControllerBase
             {
                 new()
                 {
-                    ModelPath = "C:\\Users\\admin\\Desktop\\device-manager\\models\\cyberrealistic_pony_v110.safetensors",
+                    ModelPath = "C:\\Users\\admin\\Desktop\\node-manager\\models\\cyberrealistic_pony_v110.safetensors",
                     ModelType = ModelType.SDXL,
                     ModelName = "CyberRealistic Pony v1.1.0"
                 }

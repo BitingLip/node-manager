@@ -1,254 +1,574 @@
-# Python Workers System
+# SDXL Workers System
 
 ## Overview
 
-This directory contains the modular Python workers system for SDXL image generation. The system is designed to work with the C# device operations host through JSON-based IPC communication.
+This directory contains the comprehensive modular Python workers system for SDXL image generation with advanced features. The system provides a complete solution for text-to-image, image-to-image, inpainting, upscaling, and post-processing operations with DirectML/CUDA support and optimized memory management.
 
 ## Architecture
 
-### Core Components
-- **BaseWorker**: Abstract base class for all workers
-- **DeviceManager**: Handles DirectML/CUDA device detection and optimization
-- **CommunicationManager**: Manages async JSON IPC with the C# host
+The workers system follows a modular architecture with specialized components for different aspects of SDXL inference:
 
-### Model Management
-- **ModelLoader**: Loads and caches SDXL models with LRU eviction
-- **LoRAManager**: Handles LoRA weight loading and application
+### Core Infrastructure (`core/`)
+- **BaseWorker** (`base_worker.py`): Abstract base class providing standardized interfaces, error handling, and request/response protocols for all workers
+- **DeviceManager** (`device_manager.py`): Advanced device detection and management supporting DirectML (AMD), CUDA (NVIDIA), and CPU backends with automatic optimization
+- **CommunicationManager** (`core/communication.py`): Async JSON-based IPC with streaming support for real-time progress updates
 
-### Scheduler System
-- **SchedulerFactory**: Creates and configures diffusion schedulers
-- Supports 10+ scheduler types with quality presets
+### Model Management (`models/`)
+- **ModelLoader** (`model_loader.py`): Sophisticated model loading with LRU caching, memory optimization, and support for SDXL base/refiner models
+- **LoRAManager** (`adapters/lora_manager.py`): Dynamic LoRA adapter management with weight blending and memory-efficient loading
+- **VAEManager** (`vae_manager.py`): VAE model management with custom VAE support and memory optimization
+- **Additional Components**:
+  - `encoders.py`: Text encoder management and optimization
+  - `tokenizers.py`: Tokenizer utilities and prompt processing
+  - `unet.py`: UNet model management and optimization
 
-### Inference Workers
-- **SDXLWorker**: Main SDXL inference worker (text2img, img2img, inpainting)
-- **PipelineManager**: Orchestrates multi-worker tasks and batch processing
+### Scheduler System (`schedulers/`)
+- **SchedulerFactory** (`scheduler_factory.py`): Factory for creating 15+ diffusion schedulers with advanced configurations
+- **SchedulerManager** (`scheduler_manager.py`): Dynamic scheduler switching and optimization
+- **Individual Schedulers**:
+  - `ddim.py`: DDIM scheduler implementation
+  - `dpm_plus_plus.py`: DPM++ scheduler variants
+  - `euler.py`: Euler and Euler Ancestral schedulers
+  - `base_scheduler.py`: Base scheduler interface
 
-### Main Entry Point
-- **WorkerOrchestrator**: Coordinates communication and worker routing
+### Inference Workers (`inference/`)
+- **SDXLWorker** (`sdxl_worker.py`): Main SDXL inference worker supporting text2img, img2img, inpainting with advanced features
+- **PipelineManager** (`pipeline_manager.py`): Orchestrates complex multi-stage workflows and batch processing
+- **Enhanced Components**:
+  - `enhanced_sdxl_worker.py`: Advanced SDXL worker with additional features
+  - `controlnet_worker.py`: ControlNet integration for guided generation
+  - `lora_worker.py`: Specialized LoRA-focused inference worker
+  - `batch_manager.py`: Batch processing optimization
+  - `memory_optimizer.py`: Advanced memory management and optimization
+
+### Conditioning & Prompt Processing (`conditioning/`)
+- **PromptProcessor** (`prompt_processor.py`): Advanced prompt parsing with attention weights, emphasis handling, and multi-prompt composition
+- **ControlNet** (`controlnet.py`): ControlNet conditioning for guided image generation
+- **Img2Img** (`img2img.py`): Image-to-image conditioning and preprocessing
+
+### Coordination & Orchestration (`coordination/`)
+- **ModelSuiteCoordinator** (`model_suite_coordinator.py`): Coordinates base+refiner+VAE model suites with efficient memory management
+- **SDXLRefinerPipeline** (`sdxl_refiner_pipeline.py`): Specialized refiner pipeline coordination
+- **MLWorkerDirect** (`ml_worker_direct.py`): Direct ML worker communication and coordination
+
+### Post-Processing (`postprocessing/`)
+- **UpscalerWorker** (`upscaler_worker.py`): High-quality image upscaling using Real-ESRGAN and ESRGAN models
+- **ImageEnhancer** (`image_enhancer.py`): Advanced image enhancement and quality improvements
+- **SafetyChecker** (`safety_checker.py`): NSFW content filtering and safety assessment
+- **Upscalers** (`upscalers.py`): Core upscaling algorithms and model management
+
+### Testing & Quality Assurance (`testing/`)
+- **ComprehensiveTesting** (`comprehensive_testing.py`): Complete test suite for all worker functionality
+- **Performance Benchmarks**: Memory usage, generation speed, and quality metrics
+
+### Documentation (`docs/`)
+- **API Documentation** (`api_documentation.md`): Complete API reference for all workers and endpoints
+- **Performance Guide** (`performance_guide.md`): Optimization guidelines and performance tuning
+- **Troubleshooting Guide** (`troubleshooting_guide.md`): Common issues and solutions
+- **Deployment Instructions** (`deployment_instructions.md`): Production deployment guidance
+
+## Key Features
+
+### Advanced Generation Capabilities
+- **Text-to-Image**: High-quality SDXL text-to-image generation with advanced controls
+- **Image-to-Image**: Image transformation with strength control and noise injection
+- **Inpainting**: Intelligent image inpainting with mask support
+- **ControlNet Integration**: Guided generation using edge detection, depth maps, and other control inputs
+- **LoRA Support**: Dynamic LoRA loading with weight blending and multiple adapter composition
+- **Upscaling**: 2x/4x image upscaling using state-of-the-art Real-ESRGAN models
+
+### Memory & Performance Optimization
+- **Smart Caching**: LRU model caching with configurable memory limits
+- **Device Optimization**: Automatic device selection and memory management
+- **Batch Processing**: Efficient batch inference with memory optimization
+- **Model Offloading**: Intelligent model loading/unloading for memory-constrained systems
+- **Stream Processing**: Real-time progress updates and streaming responses
+
+### Safety & Quality Controls
+- **Content Filtering**: Built-in NSFW detection and safety checking
+- **Quality Assessment**: Automatic quality scoring and enhancement
+- **Error Recovery**: Robust error handling with fallback mechanisms
+- **Schema Validation**: Comprehensive request validation and error reporting
 
 ## Configuration
 
-The system uses `config.json` for configuration:
+The system uses multiple configuration files and supports runtime configuration:
 
+### Core Configuration
+- **Package Configuration**: Defined in `__init__.py` with graceful dependency handling
+- **Requirements**: Specified in `requirements.txt` with DirectML and PyTorch dependencies
+- **Device Settings**: Automatic device detection with manual override support
+
+### Model Configuration
+- **Model Paths**: Configurable model directories and caching settings
+- **Memory Limits**: Adjustable cache sizes and memory optimization parameters
+- **LoRA Settings**: Dynamic LoRA loading configuration and weight management
+
+## Usage Examples
+
+### Basic Text-to-Image Generation
+
+```python
+from Workers import SDXLWorker
+import asyncio
+
+async def generate_image():
+    worker = SDXLWorker()
+    await worker.initialize()
+    
+    request = {
+        "prompt": "A beautiful landscape, masterpiece, high quality",
+        "negative_prompt": "blurry, low quality",
+        "width": 1024,
+        "height": 1024,
+        "num_inference_steps": 30,
+        "guidance_scale": 7.5,
+        "scheduler": "DPMSolverMultistepScheduler"
+    }
+    
+    result = await worker.process_request(request)
+    return result
+
+# Run the generation
+result = asyncio.run(generate_image())
+```
+
+### Advanced Pipeline with LoRA and Upscaling
+
+```python
+from Workers import PipelineManager
+import asyncio
+
+async def advanced_generation():
+    pipeline = PipelineManager()
+    await pipeline.initialize()
+    
+    request = {
+        "workflow": "text2img_upscale",
+        "stages": [
+            {
+                "type": "text2img",
+                "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
+                "prompt": "A cyberpunk cityscape, neon lights, highly detailed",
+                "lora": {
+                    "enabled": True,
+                    "adapters": [
+                        {"model_id": "cyberpunk_lora", "weight": 0.8}
+                    ]
+                }
+            },
+            {
+                "type": "upscale",
+                "scale_factor": 2.0,
+                "method": "realesrgan",
+                "quality_mode": "high"
+            }
+        ]
+    }
+    
+    result = await pipeline.process_workflow(request)
+    return result
+
+result = asyncio.run(advanced_generation())
+```
+
+## Request Format & API Schema
+
+All requests follow standardized JSON schemas with comprehensive validation:
+
+### Standard Request Format
 ```json
 {
-  "default_worker": "pipeline_manager",
-  "workers": {
-    "pipeline_manager": {
-      "max_concurrent_tasks": 2,
-      "task_timeout": 600
-    }
+  "request_id": "unique_request_id",
+  "worker_type": "sdxl_worker",
+  "data": {
+    "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
+    "prompt": "A beautiful landscape, masterpiece, high quality",
+    "negative_prompt": "blurry, low quality, distorted",
+    "width": 1024,
+    "height": 1024,
+    "num_inference_steps": 30,
+    "guidance_scale": 7.5,
+    "scheduler": "DPMSolverMultistepScheduler",
+    "seed": 42,
+    "safety_checker": true
   }
 }
 ```
 
-## Usage
-
-### Starting the Workers System
-
-```python
-from main import WorkerOrchestrator
-import asyncio
-
-async def main():
-    orchestrator = WorkerOrchestrator("config.json")
-    await orchestrator.start()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-### C# Integration
-
-The system communicates with C# via JSON messages over stdio:
-
-```csharp
-// C# side sends JSON request
-var request = new {
-    worker_type = "sdxl_worker",
-    method = "text2img",
-    parameters = new {
-        prompt = "A beautiful landscape",
-        model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-    }
-};
-```
-
-### Worker Types
-
-1. **pipeline_manager**: Orchestrates complex multi-step workflows
-2. **sdxl_worker**: Direct SDXL inference for single tasks
-3. **model_loader**: Model management and caching
-
-## Request Format
-
-All requests follow the JSON schema defined in `../schemas/prompt_submission_schema.json`:
-
+### LoRA Configuration
 ```json
 {
-  "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
-  "prompt": "A beautiful landscape, masterpiece, high quality",
-  "negative_prompt": "blurry, low quality",
-  "width": 1024,
-  "height": 1024,
-  "num_inference_steps": 30,
-  "guidance_scale": 7.5,
-  "scheduler": "DPMSolverMultistepScheduler",
-  "seed": 42,
   "lora": {
     "enabled": true,
     "adapters": [
       {
         "model_id": "lora_model_id",
-        "weight": 0.8
+        "weight": 0.8,
+        "trigger_words": ["special_style"]
       }
     ]
   }
 }
 ```
 
-## Model Support
-
-### Base Models
-- SDXL 1.0 and compatible checkpoints
-- SafeTensors and PyTorch formats
-- HuggingFace Hub integration
-
-### LoRA Support
-- Dynamic LoRA loading and weight adjustment
-- Multiple LoRA combination
-- Memory-efficient adapter management
-
-### Schedulers
-- DPM++ 2M Karras
-- Euler Ancestral
-- DDIM
-- Heun
-- UniPC
-- LMS
-- PNDM
-- DPM++ 2M
-- DPM++ SDE Karras
-- Euler
-
-## Performance Features
-
-### Memory Optimization
-- LRU model caching with configurable limits
-- Automatic GPU memory management
-- Model offloading for memory constrained systems
-
-### Device Support
-- DirectML for AMD GPUs
-- CUDA for NVIDIA GPUs
-- Automatic device detection and optimization
-
-### Generation Features
-- Streaming progress updates
-- Batch processing support
-- Multi-stage workflows (text2img → img2img)
-- Safety checker integration
-
-## Error Handling
-
-The system provides comprehensive error handling:
-
-- Model loading errors with fallback options
-- Memory management with automatic cleanup
-- Device compatibility checks
-- JSON schema validation
-
-## Logging
-
-Structured logging throughout the system:
-
-```python
-import logging
-logger = logging.getLogger(__name__)
-logger.info("Model loaded successfully", extra={"model_id": model_id})
+### Upscaling Request
+```json
+{
+  "worker_type": "upscaler_worker",
+  "data": {
+    "images": ["base64_encoded_image"],
+    "scale_factor": 2.0,
+    "method": "realesrgan",
+    "quality_mode": "high"
+  }
+}
 ```
 
-## Dependencies
+## Model Support & Compatibility
 
-Key Python packages:
-- torch (with DirectML support)
-- diffusers
-- transformers
-- safetensors
-- Pillow
-- numpy
-- jsonschema
+### Base Models
+- **SDXL 1.0**: Full support for Stability AI's SDXL base and refiner models
+- **Custom SDXL**: Support for community fine-tuned SDXL models
+- **SafeTensors & PyTorch**: Both `.safetensors` and `.pt` format support
+- **HuggingFace Hub**: Direct integration with HuggingFace model repository
 
-## File Structure
+### LoRA Adapters
+- **Dynamic Loading**: Runtime LoRA loading and weight adjustment
+- **Multiple Adapters**: Support for combining multiple LoRAs
+- **Weight Blending**: Advanced weight blending and interpolation
+- **Memory Efficient**: Optimized adapter management with automatic cleanup
+
+### Schedulers
+- **DPM++ 2M Karras**: High-quality sampling with Karras noise schedule
+- **Euler Ancestral**: Fast sampling with ancestral correction
+- **DDIM**: Deterministic sampling for reproducible results
+- **Heun**: Second-order accuracy sampling
+- **UniPC**: Fast high-order sampling
+- **LMS**: Linear multistep method
+- **PNDM**: Pseudo numerical method
+- **DPM++ Variants**: Multiple DPM++ configurations
+- **Custom Configurations**: Support for custom scheduler parameters
+
+### VAE Models
+- **Standard SDXL VAE**: Default SDXL VAE with optimizations
+- **Custom VAEs**: Support for alternative VAE models
+- **Memory Optimization**: Efficient VAE loading and caching
+
+## Performance Features & Optimization
+
+### Memory Management
+- **LRU Caching**: Intelligent model caching with configurable limits
+- **Automatic Cleanup**: Memory cleanup and garbage collection
+- **Model Offloading**: Dynamic model loading/unloading based on memory pressure
+- **Batch Optimization**: Memory-efficient batch processing
+
+### Device Support
+- **DirectML**: Full AMD GPU support via DirectML backend
+- **CUDA**: NVIDIA GPU support with memory optimization
+- **CPU Fallback**: Automatic CPU fallback for compatibility
+- **Mixed Precision**: FP16/FP32 precision management for performance
+
+### Generation Optimization
+- **Streaming Updates**: Real-time progress reporting
+- **Async Processing**: Non-blocking inference operations
+- **Queue Management**: Intelligent task queuing and prioritization
+- **Resource Pooling**: Efficient resource allocation and reuse
+
+## Error Handling & Recovery
+
+The system provides comprehensive error handling across all components:
+
+### Model Loading Errors
+- **Automatic Fallbacks**: Alternative model loading strategies
+- **Cache Recovery**: Automatic cache repair and reconstruction
+- **Format Detection**: Automatic model format detection and conversion
+- **Compatibility Checking**: Pre-flight compatibility validation
+
+### Runtime Errors
+- **Memory Management**: Automatic memory cleanup on errors
+- **Device Switching**: Fallback to alternative compute devices
+- **Graceful Degradation**: Reduced quality modes for resource constraints
+- **Progress Recovery**: Resume interrupted operations where possible
+
+### Communication Errors
+- **Retry Logic**: Automatic retry with exponential backoff
+- **Timeout Handling**: Configurable timeouts with cleanup
+- **Schema Validation**: Comprehensive request validation
+- **Error Reporting**: Detailed error messages with context
+
+## Logging & Monitoring
+
+Structured logging throughout the system with configurable levels:
+
+### Log Categories
+- **Performance Metrics**: Generation time, memory usage, throughput
+- **Model Operations**: Loading, caching, and optimization events
+- **Device Management**: Device selection and memory management
+- **Request Processing**: Request validation and processing stages
+- **Error Tracking**: Detailed error logging with stack traces
+
+### Configuration
+```python
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+```
+
+## Dependencies & Requirements
+
+### System Requirements
+- **Python**: 3.10.0 or higher (required for all components)
+- **Operating System**: Windows 10/11 (DirectML), Linux (CUDA), macOS (CPU/MPS)
+- **GPU Memory**: Minimum 6GB VRAM for SDXL, 8GB+ recommended
+- **System Memory**: 16GB+ RAM recommended for optimal performance
+
+### Core Dependencies
+```pip-requirements
+# PyTorch with DirectML support (AMD GPUs)
+torch==2.4.1+cpu
+torchvision==0.19.1+cpu
+torch-directml==0.2.5.dev240914
+
+# Diffusion models and transformers
+diffusers==0.33.1
+transformers==4.30.0
+accelerate==0.20.0
+
+# Model formats and safety
+safetensors>=0.3.0
+huggingface-hub>=0.16.0
+
+# Image processing and upscaling
+Pillow>=9.0.0
+opencv-python>=4.8.0
+
+# Scientific computing
+numpy>=1.21.0,<2.0.0
+scipy>=1.9.0
+
+# Communication and validation
+jsonschema>=4.17.0
+aiofiles>=23.0.0
+asyncio-throttle>=1.0.2
+
+# Monitoring and logging
+structlog>=23.0.0
+psutil>=5.9.0
+
+# Optional performance optimizations
+xformers>=0.0.20  # Memory efficient attention
+nvidia-ml-py>=12.0.0  # NVIDIA GPU monitoring
+```
+
+### Development Dependencies
+```pip-requirements
+# Testing framework
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Code quality
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+```
+
+## Complete File Structure
 
 ```
 Workers/
-├── config.json              # Configuration
-├── README.md               # This file
-├── main.py                 # Entry point
-├── __init__.py             # Package initialization
-├── core/                   # Core infrastructure
-│   ├── __init__.py
-│   ├── base_worker.py      # BaseWorker abstract class
-│   ├── device_manager.py   # Device detection/management
-│   └── communication.py    # IPC handling
-├── models/                 # Model management
-│   ├── __init__.py
-│   ├── model_loader.py     # Model loading/caching
-│   └── lora_manager.py     # LoRA management
-├── schedulers/             # Scheduler factory
-│   ├── __init__.py
-│   └── scheduler_factory.py
-└── inference/              # Inference workers
-    ├── __init__.py
-    ├── sdxl_worker.py      # Main SDXL worker
-    └── pipeline_manager.py # Multi-worker orchestration
+├── __init__.py                     # Package initialization with graceful imports
+├── requirements.txt                # Complete dependency specifications
+├── README.md                      # This comprehensive documentation
+│
+├── core/                          # Core Infrastructure
+│   ├── __init__.py               # Core component exports
+│   ├── base_worker.py            # Abstract base worker class
+│   ├── device_manager.py         # DirectML/CUDA device management
+│   └── communication.py          # JSON IPC and streaming protocols
+│
+├── models/                        # Model Management System
+│   ├── __init__.py               # Model component exports
+│   ├── model_loader.py           # SDXL model loading and caching
+│   ├── vae_manager.py            # VAE model management
+│   ├── encoders.py               # Text encoder optimization
+│   ├── tokenizers.py             # Tokenizer utilities
+│   ├── unet.py                   # UNet model management
+│   ├── adapters/                 # Model Adapters
+│   │   ├── __init__.py
+│   │   └── lora_manager.py       # LoRA adapter management
+│   ├── loras/                    # LoRA Models (empty placeholder)
+│   ├── textual_inversions/       # Textual Inversions (empty placeholder)
+│   └── vaes/                     # Custom VAE Models (empty placeholder)
+│
+├── schedulers/                    # Diffusion Schedulers
+│   ├── __init__.py               # Scheduler exports
+│   ├── scheduler_factory.py      # Scheduler creation and configuration
+│   ├── scheduler_manager.py      # Dynamic scheduler management
+│   ├── base_scheduler.py         # Base scheduler interface
+│   ├── ddim.py                   # DDIM scheduler implementation
+│   ├── dpm_plus_plus.py          # DPM++ scheduler variants
+│   └── euler.py                  # Euler scheduler implementations
+│
+├── inference/                     # Inference Workers
+│   ├── __init__.py               # Inference component exports
+│   ├── sdxl_worker.py            # Main SDXL inference worker
+│   ├── enhanced_sdxl_worker.py   # Enhanced SDXL worker with extras
+│   ├── pipeline_manager.py       # Multi-stage workflow orchestration
+│   ├── controlnet_worker.py      # ControlNet integration worker
+│   ├── lora_worker.py            # LoRA-specialized worker
+│   ├── batch_manager.py          # Batch processing optimization
+│   └── memory_optimizer.py       # Advanced memory management
+│
+├── conditioning/                  # Prompt & Conditioning
+│   ├── prompt_processor.py       # Advanced prompt parsing and weighting
+│   ├── controlnet.py             # ControlNet conditioning
+│   └── img2img.py                # Image conditioning and preprocessing
+│
+├── coordination/                  # High-Level Coordination
+│   ├── __init__.py               # Coordination exports
+│   ├── model_suite_coordinator.py # Base+Refiner+VAE coordination
+│   ├── sdxl_refiner_pipeline.py  # Refiner pipeline management
+│   └── ml_worker_direct.py       # Direct ML worker communication
+│
+├── postprocessing/               # Image Post-Processing
+│   ├── upscaler_worker.py        # Real-ESRGAN upscaling worker
+│   ├── image_enhancer.py         # Image enhancement algorithms
+│   ├── safety_checker.py         # NSFW filtering and safety
+│   └── upscalers.py              # Core upscaling implementations
+│
+├── testing/                      # Testing & Quality Assurance
+│   ├── __init__.py               # Testing exports
+│   └── comprehensive_testing.py  # Complete test suite
+│
+└── docs/                         # Documentation
+    ├── __init__.py               # Documentation exports
+    ├── api_documentation.md      # Complete API reference
+    ├── performance_guide.md      # Performance optimization guide
+    ├── troubleshooting_guide.md  # Common issues and solutions
+    ├── deployment_instructions.md # Production deployment guide
+    └── completion_summaries/     # Development phase summaries
 ```
 
-## Testing
+## Development & Testing
 
-Run tests with:
-
+### Installation for Development
 ```bash
-python -m pytest tests/
+# Clone repository and navigate to workers directory
+cd device-operations/src/Workers
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install development dependencies
+pip install pytest pytest-asyncio black flake8 mypy
+
+# Verify installation
+python -c "from Workers import SDXLWorker; print('Installation successful')"
 ```
 
-## Development
+### Running Tests
+```bash
+# Run comprehensive test suite
+python -m pytest testing/comprehensive_testing.py -v
 
-For development:
+# Run specific test categories
+python -m pytest testing/ -k "upscaling" -v
+python -m pytest testing/ -k "memory" -v
+python -m pytest testing/ -k "pipeline" -v
 
-1. Install dependencies: `pip install -r requirements.txt`
-2. Configure paths in `config.json`
-3. Run with: `python main.py`
-4. Monitor logs in `../logs/workers.log`
+# Performance benchmarks
+python testing/comprehensive_testing.py --benchmark
+```
+
+### Code Quality
+```bash
+# Format code
+black .
+
+# Lint code
+flake8 .
+
+# Type checking
+mypy .
+```
+
+## Deployment & Production
+
+### Production Configuration
+- **Memory Limits**: Configure appropriate cache sizes for production workloads
+- **Device Selection**: Ensure optimal device configuration for target hardware
+- **Error Handling**: Enable comprehensive error logging and monitoring
+- **Safety Checking**: Configure content filtering based on deployment requirements
+
+### Performance Tuning
+- **Batch Sizes**: Optimize batch sizes for available memory
+- **Model Caching**: Configure LRU cache limits based on available storage
+- **Precision Settings**: Use FP16 where supported for better performance
+- **Device Optimization**: Enable device-specific optimizations
+
+### Monitoring & Maintenance
+- **Memory Usage**: Monitor memory consumption and adjust limits as needed
+- **Performance Metrics**: Track generation times and throughput
+- **Error Rates**: Monitor error rates and implement alerts
+- **Model Updates**: Plan for model updates and cache invalidation
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Model Loading Errors**
-   - Check model paths in config.json
-   - Verify model format (SafeTensors/PyTorch)
-   - Ensure sufficient disk space
+#### Memory Errors
+- **Symptoms**: CUDA/DirectML out of memory errors
+- **Solutions**: 
+  - Reduce batch sizes in configuration
+  - Lower model cache limits
+  - Enable model offloading
+  - Use FP16 precision where supported
 
-2. **Memory Issues**
-   - Reduce max_cache_memory_gb in config
-   - Lower max_batch_size
-   - Enable model offloading
+#### Model Loading Issues
+- **Symptoms**: Failed to load models or incorrect model format
+- **Solutions**:
+  - Verify model paths and permissions
+  - Check model format compatibility (.safetensors/.pt)
+  - Ensure sufficient disk space for cache
+  - Validate model integrity
 
-3. **Device Issues**
-   - Verify DirectML/CUDA installation
-   - Check device compatibility
-   - Monitor GPU memory usage
+#### Device Detection Problems
+- **Symptoms**: Fallback to CPU despite GPU availability
+- **Solutions**:
+  - Verify DirectML/CUDA installation
+  - Check GPU driver versions
+  - Validate device compatibility
+  - Review device manager logs
+
+#### Performance Issues
+- **Symptoms**: Slow generation times or high memory usage
+- **Solutions**:
+  - Enable performance optimizations (xformers)
+  - Adjust scheduler parameters
+  - Optimize batch processing
+  - Configure device-specific settings
 
 ### Debug Mode
-
-Enable debug logging:
-
-```json
-{
-  "logging": {
-    "level": "DEBUG"
-  }
-}
+Enable detailed logging for troubleshooting:
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
 ```
+
+### Support Resources
+- **API Documentation**: See `docs/api_documentation.md`
+- **Performance Guide**: See `docs/performance_guide.md`
+- **Troubleshooting Guide**: See `docs/troubleshooting_guide.md`
+- **Deployment Guide**: See `docs/deployment_instructions.md`
+
+## Version Information
+- **System Version**: 1.0.0
+- **SDXL Support**: Full SDXL 1.0 compatibility
+- **DirectML Version**: 0.2.5.dev240914
+- **PyTorch Version**: 2.4.1+cpu
+- **Diffusers Version**: 0.33.1
+
+This comprehensive workers system provides enterprise-grade SDXL inference capabilities with advanced features, robust error handling, and optimized performance for production deployments.

@@ -4,7 +4,7 @@ I'll create a build plan for the `device-operations` service that handles memory
 
 ### 1. **Project Structure**
 ```
-device-manager/
+node-manager/
 ├── device-monitor/          (existing)
 ├── device-operations/       (new)
 │   ├── DeviceOperations.csproj
@@ -53,7 +53,7 @@ device-manager/
 │   │       └── DirectMLExtensions.cs
 │   └── tests/
 │       └── DeviceOperations.Tests/
-└── device-manager.sln (updated)
+└── node-manager.sln (updated)
 ```
 
 ### 2. **Technology Stack**

@@ -45,7 +45,7 @@ The project is organized into the following directories and files:
 1. **Clone the repository** to your local machine:
    ```bash
    git clone <repository-url>
-   cd device-manager/device-monitor
+   cd node-manager/device-monitor
    ```
 
 2. **Install PostgreSQL** and create the database:

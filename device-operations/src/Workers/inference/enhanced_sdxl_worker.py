@@ -25,12 +25,12 @@ from diffusers import (
 )
 
 # Import base worker functionality
-from ..legacy.base_worker import BaseWorker, WorkerRequest, WorkerResponse, ProcessingError
-from ..core.enhanced_orchestrator import EnhancedRequest
+from legacy.base_worker import BaseWorker, WorkerRequest, WorkerResponse, ProcessingError
+from core.enhanced_orchestrator import EnhancedRequest
 
 # Import feature managers
-from ..features.scheduler_manager import SchedulerManager
-from ..features.batch_manager import EnhancedBatchManager, BatchConfiguration
+from features.scheduler_manager import SchedulerManager
+from inference.batch_manager import EnhancedBatchManager, BatchConfiguration
 # Import LoRA Worker from the correct path
 import sys
 import os

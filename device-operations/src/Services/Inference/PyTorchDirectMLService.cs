@@ -32,18 +32,26 @@ public class PyTorchDirectMLService : IDisposable
 
                 // Path to Python worker - check multiple locations
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var workerPath = Path.Combine(baseDir, "PytorchDirectMLWorker.py");
+                var workerPath = Path.Combine(baseDir, "src", "Workers", "run_worker.py");
                 
                 if (!File.Exists(workerPath))
                 {
-                    // Try alternative path
+                    // Try legacy path
                     workerPath = Path.Combine(baseDir, "src", "Workers", "PytorchDirectMLWorker.py");
                     
                     if (!File.Exists(workerPath))
                     {
-                        _logger.LogError($"PyTorch worker not found at: {workerPath}");
-                        _logger.LogError($"Also checked: {Path.Combine(baseDir, "PytorchDirectMLWorker.py")}");
-                        return false;
+                        // Try relative path from current directory
+                        workerPath = Path.Combine("src", "Workers", "run_worker.py");
+                        
+                        if (!File.Exists(workerPath))
+                        {
+                            _logger.LogError($"PyTorch worker not found. Checked paths:");
+                            _logger.LogError($"  - {Path.Combine(baseDir, "src", "Workers", "run_worker.py")}");
+                            _logger.LogError($"  - {Path.Combine(baseDir, "src", "Workers", "PytorchDirectMLWorker.py")}");
+                            _logger.LogError($"  - {Path.Combine("src", "Workers", "run_worker.py")}");
+                            return false;
+                        }
                     }
                 }
 

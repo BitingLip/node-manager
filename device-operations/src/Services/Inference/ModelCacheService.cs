@@ -741,12 +741,12 @@ public class ModelCacheService : IModelCacheService, IDisposable
             new()
             {
                 SuiteName = "cyberrealistic_pony_v110",
-                BaseModelPath = "C:\\Users\\admin\\Desktop\\device-manager\\models\\cyberrealisticPony_v110.safetensors"
+                BaseModelPath = "C:\\Users\\admin\\Desktop\\node-manager\\models\\cyberrealisticPony_v110.safetensors"
             },
             new()
             {
                 SuiteName = "cyberrealistic_pony_v125",
-                BaseModelPath = "C:\\Users\\admin\\Desktop\\device-manager\\models\\cyberrealisticPony_v125.safetensors"
+                BaseModelPath = "C:\\Users\\admin\\Desktop\\node-manager\\models\\cyberrealisticPony_v125.safetensors"
             }
         };
     }

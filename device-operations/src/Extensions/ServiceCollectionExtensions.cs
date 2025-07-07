@@ -39,9 +39,10 @@ public static class ServiceCollectionExtensions
             return new PyTorchWorkerService("gpu_0", logger, requestTransformer, responseHandler);
         });
         
-        // Inference services (existing, for compatibility)
-        services.AddSingleton<PyTorchDirectMLService>();
-        services.AddSingleton<IInferenceService, InferenceService>();
+        // Inference services - using direct communication instead of HTTP bridge
+        services.AddSingleton<PyTorchDirectMLService>(); // Keep for compatibility
+        services.AddSingleton<DirectMLWorkerService>(); // New direct communication service
+        services.AddSingleton<IInferenceService, InferenceService>(); // Use direct communication service
         
         // Training services
         services.AddSingleton<ITrainingService, TrainingService>();

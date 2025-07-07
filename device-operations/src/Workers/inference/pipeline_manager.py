@@ -13,12 +13,12 @@ from dataclasses import dataclass
 from datetime import datetime
 import uuid
 
-from ..core.base_worker import BaseWorker, WorkerRequest, WorkerResponse, WorkerError
-from ..core.device_manager import get_device_manager
-from ..inference.sdxl_worker import SDXLWorker
-from ..models.model_loader import ModelLoader
-from ..models.lora_manager import LoRAManager
-from ..schedulers.scheduler_factory import get_scheduler_factory
+from core.base_worker import BaseWorker, WorkerRequest, WorkerResponse, WorkerError
+from core.device_manager import get_device_manager
+from inference.sdxl_worker import SDXLWorker
+from models.model_loader import ModelLoader
+from models.adapters.lora_manager import LoRAManager
+from schedulers.scheduler_factory import get_scheduler_factory
 
 
 @dataclass

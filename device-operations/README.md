@@ -56,7 +56,7 @@ A high-performance API service for GPU memory management, AI inference, and adva
 
 ### 1. **Clone and Setup**
 ```bash
-cd device-manager/device-operations
+cd node-manager/device-operations
 
 # Restore .NET dependencies
 dotnet restore
@@ -334,4 +334,4 @@ asyncio.run(benchmark())
 
 ## License
 
-This project is part of the device-manager system.
+This project is part of the node-manager system.

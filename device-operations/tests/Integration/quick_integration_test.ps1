@@ -6,7 +6,7 @@ Write-Host "============================================================" -Foreg
 
 # Step 1: Build C# project
 Write-Host "Building C# DeviceOperations project..." -ForegroundColor Yellow
-Set-Location "c:\Users\admin\Desktop\device-manager\device-operations"
+Set-Location "c:\Users\admin\Desktop\node-manager\device-operations"
 dotnet build --configuration Debug
 
 if ($LASTEXITCODE -ne 0) {

@@ -26,12 +26,12 @@ from diffusers import (
 )
 from diffusers.utils import logging as diffusers_logging
 
-from ..core.base_worker import BaseWorker, WorkerRequest, WorkerResponse, ProcessingError
-from ..core.device_manager import get_device_manager
-from ..core.communication import StreamingResponse
-from ..models.model_loader import ModelLoader
-from ..models.lora_manager import LoRAManager
-from ..schedulers.scheduler_factory import get_scheduler_factory
+from core.base_worker import BaseWorker, WorkerRequest, WorkerResponse, ProcessingError
+from core.device_manager import get_device_manager
+from core.communication import StreamingResponse
+from models.model_loader import ModelLoader
+from models.adapters.lora_manager import LoRAManager
+from schedulers.scheduler_factory import get_scheduler_factory
 
 
 class SDXLWorker(BaseWorker):
@@ -79,6 +79,9 @@ class SDXLWorker(BaseWorker):
             
             # Initialize model loader
             model_loader_config = self.config.get("model_loader", {})
+            # Pass models_path from worker config to model loader config
+            if "models_path" in self.config:
+                model_loader_config["models_path"] = self.config["models_path"]
             self.model_loader = ModelLoader("model_loader", model_loader_config)
             await self.model_loader.initialize()
             
@@ -367,7 +370,9 @@ class SDXLWorker(BaseWorker):
         inference_params = self._prepare_inference_params(request_data)
         
         # Create streaming response for progress updates
-        streaming = StreamingResponse(request_id, self.comm_manager if hasattr(self, 'comm_manager') else None)
+        streaming = None
+        if hasattr(self, 'comm_manager') and self.comm_manager is not None:
+            streaming = StreamingResponse(request_id, self.comm_manager)
         
         try:
             # Perform inference based on pipeline type

@@ -86,8 +86,8 @@ nvidia-smi
 #### 1. Clone and Setup Repository
 ```bash
 # Clone repository
-git clone <repository-url> device-manager
-cd device-manager/device-operations
+git clone <repository-url> node-manager
+cd node-manager/device-operations
 
 # Create Python virtual environment
 python -m venv venv
