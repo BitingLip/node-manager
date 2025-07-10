@@ -1,18 +1,30 @@
 """
-Inference Workers Package
-=========================
+Inference Package for SDXL Workers System
+==========================================
 
-SDXL inference workers and pipeline management components.
+This package contains inference components including workers, managers,
+and the unified inference interface.
 """
 
-from inference.sdxl_worker import SDXLWorker
-from inference.pipeline_manager import (
-    PipelineManager,
-    PipelineTask
-)
+from .interface_inference import InferenceInterface, create_inference_interface
+
+# Managers
+from .managers.manager_batch import BatchManager
+from .managers.manager_pipeline import PipelineManager  
+from .managers.manager_memory import MemoryManager
+
+# Workers
+from .workers.worker_sdxl import SDXLWorker
+from .workers.worker_controlnet import ControlNetWorker
+from .workers.worker_lora import LoRAWorker
 
 __all__ = [
-    "SDXLWorker",
+    "InferenceInterface",
+    "create_inference_interface",
+    "BatchManager", 
     "PipelineManager",
-    "PipelineTask"
+    "MemoryManager",
+    "SDXLWorker",
+    "ControlNetWorker",
+    "LoRAWorker"
 ]

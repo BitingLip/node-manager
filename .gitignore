@@ -555,7 +555,7 @@ cython_debug/
 !LICENSE.txt
 
 # Specific to your project - AI/ML related
-models/
+/models/
 !models/.gitkeep
 outputs/
 !outputs/.gitkeep

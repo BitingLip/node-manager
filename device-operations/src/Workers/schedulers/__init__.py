@@ -1,18 +1,29 @@
 """
-Scheduler Management Package  
-============================
+Schedulers Package for SDXL Workers System
+==========================================
 
-Scheduler factory and configuration components for SDXL inference.
+This package contains scheduler components including workers, managers,
+and the unified scheduler interface.
 """
 
-from .scheduler_factory import (
-    SchedulerFactory,
-    SchedulerConfig,
-    get_scheduler_factory
-)
+from .interface_scheduler import SchedulerInterface, BaseScheduler, create_scheduler_interface
+
+# Managers
+from .managers.manager_factory import FactoryManager
+from .managers.manager_scheduler import SchedulerManager
+
+# Workers
+from .workers.worker_ddim import DDIMWorker
+from .workers.worker_dpm_plus_plus import DPMPlusPlusWorker
+from .workers.worker_euler import EulerWorker
 
 __all__ = [
-    "SchedulerFactory",
-    "SchedulerConfig", 
-    "get_scheduler_factory"
+    "SchedulerInterface",
+    "BaseScheduler",
+    "create_scheduler_interface",
+    "FactoryManager",
+    "SchedulerManager",
+    "DDIMWorker",
+    "DPMPlusPlusWorker",
+    "EulerWorker"
 ]

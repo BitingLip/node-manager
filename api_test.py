@@ -68,7 +68,7 @@ class DeviceOperationsAPITest:
                 "modelPath": f"C:\\Users\\admin\\Desktop\\node-manager\\models\\{model_name}.safetensors",
                 "deviceId": "gpu_0",
                 "modelName": model_name,
-                "modelType": "SDXL",  # This should match the enum value
+                "modelType": 1,  # SDXL enum value
                 "preloadToMemory": True,
                 "enableMultiGpu": True
             }
