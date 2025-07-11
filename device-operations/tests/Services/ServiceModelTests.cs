@@ -8,6 +8,7 @@ using DeviceOperations.Models.Common;
 using DeviceOperations.Models.Requests;
 using DeviceOperations.Models.Responses;
 using System.Text.Json;
+using RequestModels = DeviceOperations.Models.Requests;
 
 namespace DeviceOperations.Tests.Services;
 
@@ -150,7 +151,7 @@ public class ServiceModelTests
     {
         // Arrange
         var modelId = "test-model-id";
-        var request = new PostModelLoadRequest
+        var request = new RequestModels.PostModelLoadRequest
         {
             ModelPath = "/models/test-model",
             ModelType = ModelType.Diffusion,
@@ -283,7 +284,7 @@ public class ServiceModelTests
     {
         // Arrange
         var modelId = "test-model-id";
-        var request = new PostModelOptimizeRequest
+        var request = new RequestModels.PostModelOptimizeRequest
         {
             Target = DeviceOperations.Models.Requests.OptimizationTarget.Performance,
             DeviceId = Guid.NewGuid(),
@@ -482,7 +483,7 @@ public class ServiceModelTests
     {
         // Arrange
         var modelId = "test-model-id";
-        var request = new PostModelLoadRequest
+        var request = new RequestModels.PostModelLoadRequest
         {
             ModelPath = "/models/test-model",
             ModelType = ModelType.Diffusion,

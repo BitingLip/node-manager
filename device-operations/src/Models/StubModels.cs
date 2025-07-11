@@ -178,7 +178,7 @@ namespace DeviceOperations.Models.Responses
         public int MaxConcurrentInferences { get; set; }
         public List<string> SupportedPrecisions { get; set; } = new();
         public int MaxBatchSize { get; set; }
-        public ImageResolution MaxResolution { get; set; } = new();
+        public DeviceOperations.Models.Common.ImageResolution MaxResolution { get; set; } = new();
     }
 
     public class GetInferenceCapabilitiesDeviceResponse
@@ -190,7 +190,7 @@ namespace DeviceOperations.Models.Responses
         public int MaxConcurrentInferences { get; set; }
         public List<string> SupportedPrecisions { get; set; } = new();
         public int MaxBatchSize { get; set; }
-        public ImageResolution MaxResolution { get; set; } = new();
+        public DeviceOperations.Models.Common.ImageResolution MaxResolution { get; set; } = new();
         public long MemoryAvailable { get; set; }
         public string ComputeCapability { get; set; } = string.Empty;
         public List<string> OptimalInferenceTypes { get; set; } = new();
@@ -318,8 +318,8 @@ namespace DeviceOperations.Models.Responses
         public string ModelUsed { get; set; } = string.Empty;
         public TimeSpan ProcessingTime { get; set; }
         public DateTime CompletedAt { get; set; }
-        public ImageResolution OriginalResolution { get; set; } = new();
-        public ImageResolution NewResolution { get; set; } = new();
+        public DeviceOperations.Models.Common.ImageResolution OriginalResolution { get; set; } = new();
+        public DeviceOperations.Models.Common.ImageResolution NewResolution { get; set; } = new();
         public Dictionary<string, float> QualityMetrics { get; set; } = new();
     }
 
@@ -671,4 +671,6 @@ namespace DeviceOperations.Models.Responses
         public bool ForceUnload { get; set; }
         public Dictionary<string, object> UnloadOptions { get; set; } = new();
     }
+
+    // Additional Common Models
 }

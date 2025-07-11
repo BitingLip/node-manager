@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using DeviceOperations.Services.Python;
 using System.Text.Json;
 using System.Diagnostics;
+using Microsoft.Extensions.Options;
+using DeviceOperations.Extensions;
 
 namespace DeviceOperations.Tests.Integration;
 
@@ -21,7 +23,18 @@ public class PythonWorkerIntegrationTests : IDisposable
     {
         var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
         _logger = loggerFactory.CreateLogger<PythonWorkerService>();
-        _pythonWorkerService = new PythonWorkerService(_logger);
+        
+        var config = new PythonWorkerConfiguration
+        {
+            PythonExecutable = "python",
+            WorkerScriptPath = "src/Workers/main.py",
+            TimeoutSeconds = 300,
+            MaxWorkerProcesses = 4,
+            EnableLogging = true
+        };
+        var options = Options.Create(config);
+        
+        _pythonWorkerService = new PythonWorkerService(_logger, options);
     }
 
     #region STDIN/STDOUT Communication Tests
@@ -34,7 +47,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         var parameters = new { message = "Hello from C#", number = 42 };
 
         // Act
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
 
         // Assert
         result.Should().NotBeNull();
@@ -81,7 +94,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         };
 
         // Act
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
 
         // Assert
         result.Should().NotBeNull();
@@ -122,7 +135,7 @@ public class PythonWorkerIntegrationTests : IDisposable
 
         // Act
         var stopwatch = Stopwatch.StartNew();
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
         stopwatch.Stop();
 
         // Assert
@@ -153,7 +166,7 @@ public class PythonWorkerIntegrationTests : IDisposable
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<Exception>(() => 
-            _pythonWorkerService.ExecuteAsync(command, parameters));
+            _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters));
         
         exception.Should().NotBeNull();
         exception.Message.Should().NotBeEmpty();
@@ -168,7 +181,7 @@ public class PythonWorkerIntegrationTests : IDisposable
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<TimeoutException>(() => 
-            _pythonWorkerService.ExecuteAsync(command, parameters));
+            _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters));
         
         exception.Should().NotBeNull();
         exception.Message.Should().Contain("timeout");
@@ -183,7 +196,7 @@ public class PythonWorkerIntegrationTests : IDisposable
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<JsonException>(() => 
-            _pythonWorkerService.ExecuteAsync(command, parameters));
+            _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters));
         
         exception.Should().NotBeNull();
     }
@@ -197,7 +210,7 @@ public class PythonWorkerIntegrationTests : IDisposable
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => 
-            _pythonWorkerService.ExecuteAsync(command, parameters));
+            _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters));
         
         exception.Should().NotBeNull();
         exception.Message.Should().Contain("empty");
@@ -215,7 +228,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         var parameters = new { include_details = true };
 
         // Act
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
 
         // Assert
         result.Should().NotBeNull();
@@ -237,7 +250,7 @@ public class PythonWorkerIntegrationTests : IDisposable
     public async Task ExecuteAsync_ShouldGetDeviceStatus_WhenRequestingSpecificDevice()
     {
         // Arrange - First get available devices
-        var listResult = await _pythonWorkerService.ExecuteAsync("device_list", new { });
+        var listResult = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", "device_list", new { });
         var listDoc = JsonDocument.Parse(listResult);
         
         // Extract first device ID if available
@@ -264,7 +277,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         var parameters = new { device_id = deviceId };
 
         // Act
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
 
         // Assert
         result.Should().NotBeNull();
@@ -295,7 +308,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         var parameters = new { include_device_memory = true };
 
         // Act
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
 
         // Assert
         result.Should().NotBeNull();
@@ -330,7 +343,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         };
 
         // Act - Allocate
-        var allocateResult = await _pythonWorkerService.ExecuteAsync(allocateCommand, allocateParams);
+        var allocateResult = await _pythonWorkerService.ExecuteAsync<object, string>("memory", allocateCommand, allocateParams);
 
         // Assert - Allocation
         allocateResult.Should().NotBeNull();
@@ -354,7 +367,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         };
 
         // Act - Deallocate
-        var deallocateResult = await _pythonWorkerService.ExecuteAsync(deallocateCommand, deallocateParams);
+        var deallocateResult = await _pythonWorkerService.ExecuteAsync<object, string>("memory", deallocateCommand, deallocateParams);
 
         // Assert - Deallocation
         deallocateResult.Should().NotBeNull();
@@ -378,7 +391,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         var parameters = new { include_metadata = true };
 
         // Act
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
 
         // Assert
         result.Should().NotBeNull();
@@ -397,7 +410,7 @@ public class PythonWorkerIntegrationTests : IDisposable
     public async Task ExecuteAsync_ShouldValidateModel_WhenCheckingModelIntegrity()
     {
         // Arrange - First get available models
-        var listResult = await _pythonWorkerService.ExecuteAsync("list_models", new { });
+        var listResult = await _pythonWorkerService.ExecuteAsync<object, string>("model", "list_models", new { });
         var listDoc = JsonDocument.Parse(listResult);
         
         // Extract first model ID if available
@@ -429,7 +442,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         };
 
         // Act
-        var result = await _pythonWorkerService.ExecuteAsync(command, parameters);
+        var result = await _pythonWorkerService.ExecuteAsync<object, string>("test_worker", command, parameters);
 
         // Assert
         result.Should().NotBeNull();
@@ -454,12 +467,12 @@ public class PythonWorkerIntegrationTests : IDisposable
     public async Task ExecuteAsync_ShouldCompleteWithinReasonableTime_WhenProcessingMultipleRequests()
     {
         // Arrange
-        var commands = new[]
+        var commands = new (string workerType, string command, object parameters)[]
         {
-            ("device_list", new { }),
-            ("get_memory_status", new { }),
-            ("list_models", new { }),
-            ("test_echo", new { message = "performance_test" })
+            ("device", "device_list", new { }),
+            ("memory", "get_memory_status", new { }),
+            ("model", "list_models", new { }),
+            ("general", "test_echo", new { message = "performance_test" })
         };
 
         var stopwatch = Stopwatch.StartNew();
@@ -469,7 +482,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         {
             try
             {
-                return await _pythonWorkerService.ExecuteAsync(cmd.Item1, cmd.Item2);
+                return await _pythonWorkerService.ExecuteAsync<object, string>(cmd.workerType, cmd.command, cmd.parameters);
             }
             catch
             {
@@ -499,7 +512,7 @@ public class PythonWorkerIntegrationTests : IDisposable
         {
             var requestId = i;
             var parameters = new { message = $"concurrent_request_{requestId}", id = requestId };
-            tasks.Add(_pythonWorkerService.ExecuteAsync(command, parameters));
+            tasks.Add(_pythonWorkerService.ExecuteAsync<object, string>("general", command, parameters));
         }
 
         var results = await Task.WhenAll(tasks);

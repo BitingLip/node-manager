@@ -9,6 +9,7 @@ using DeviceOperations.Services.Postprocessing;
 using DeviceOperations.Services.Processing;
 using DeviceOperations.Models.Common;
 using DeviceOperations.Models.Responses;
+using FluentAssertions;
 
 namespace DeviceOperations.Tests.Helpers;
 
@@ -56,10 +57,10 @@ public static class TestHelpers
     {
         return new DeviceInfo
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.NewGuid().ToString(),
             Name = name,
-            Type = type,
-            Status = "Available",
+            Type = type == "GPU" ? DeviceType.GPU : DeviceType.CPU,
+            Status = DeviceStatus.Available,
             IsAvailable = true,
             DriverVersion = "1.0.0",
             CreatedAt = DateTime.UtcNow.AddDays(-30),
@@ -74,15 +75,17 @@ public static class TestHelpers
     {
         return new ModelInfo
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.NewGuid().ToString(),
             Name = name,
-            Type = type,
+            Type = type == "TextToImage" ? ModelType.SD15 : ModelType.Unknown,
             Version = "1.0",
-            Status = "Available",
-            IsLoaded = false,
-            SizeBytes = 1073741824, // 1GB
-            CreatedAt = DateTime.UtcNow.AddDays(-15),
-            UpdatedAt = DateTime.UtcNow
+            Status = ModelStatus.Available,
+            FileSize = 1073741824, // 1GB
+            Metadata = new ModelMetadata
+            {
+                CreatedDate = DateTime.UtcNow.AddDays(-15)
+            },
+            LastUpdated = DateTime.UtcNow
         };
     }
     
@@ -93,30 +96,21 @@ public static class TestHelpers
     {
         return new MemoryAllocation
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.NewGuid().ToString(),
             Size = size,
             Purpose = purpose,
-            AllocationTime = DateTime.UtcNow,
-            IsActive = true
+            CreatedAt = DateTime.UtcNow,
+            Status = MemoryAllocationStatus.Active
         };
     }
     
     /// <summary>
     /// Generate test device status
     /// </summary>
-    public static DeviceStatus CreateTestDeviceStatus(Guid? deviceId = null, string name = "Test Device")
+    public static DeviceStatus CreateTestDeviceStatus(string status = "Available")
     {
-        return new DeviceStatus
-        {
-            DeviceId = deviceId ?? Guid.NewGuid(),
-            Name = name,
-            Status = "Available",
-            IsResponsive = true,
-            LastChecked = DateTime.UtcNow,
-            Temperature = 45.5f,
-            MemoryUsage = 2048,
-            PowerUsage = 150.0f
-        };
+        // DeviceStatus is an enum, return the appropriate enum value
+        return status == "Available" ? DeviceStatus.Available : DeviceStatus.Unknown;
     }
     
     /// <summary>
@@ -126,15 +120,13 @@ public static class TestHelpers
     {
         return new InferenceSession
         {
-            Id = Guid.NewGuid(),
-            ModelId = modelId ?? Guid.NewGuid(),
-            DeviceId = deviceId ?? Guid.NewGuid(),
-            Status = "Running",
-            Progress = 50.0f,
-            InferenceType = "TextToImage",
+            Id = Guid.NewGuid().ToString(),
+            ModelId = (modelId ?? Guid.NewGuid()).ToString(),
+            DeviceId = (deviceId ?? Guid.NewGuid()).ToString(),
+            Status = SessionStatus.Running,
+            Progress = new SessionProgress { CurrentStep = 5, TotalSteps = 10 },
             CreatedAt = DateTime.UtcNow.AddMinutes(-2),
-            UpdatedAt = DateTime.UtcNow,
-            EstimatedCompletionTime = DateTime.UtcNow.AddMinutes(3)
+            LastUpdated = DateTime.UtcNow
         };
     }
     
@@ -227,7 +219,7 @@ public static class TestHelpers
         else
         {
             response.Error.Should().NotBeNull();
-            response.Error.Message.Should().NotBeNullOrEmpty();
+            response.Error!.Message.Should().NotBeNullOrEmpty();
         }
     }
     
@@ -261,15 +253,13 @@ public static class TestHelpers
             {
                 // Get memory status and clean up any test allocations
                 var memoryStatus = await memoryService.GetMemoryStatusAsync();
-                if (memoryStatus.Success && memoryStatus.Data?.DeviceMemories != null)
+                if (memoryStatus.Success && memoryStatus.Data?.MemoryStatus != null)
                 {
-                    foreach (var deviceMemory in memoryStatus.Data.DeviceMemories)
-                    {
-                        // This would require extended API to cleanup specific allocations
-                        // For now, just verify the system is responsive
-                        var deviceStatus = await memoryService.GetMemoryStatusDeviceAsync(deviceMemory.DeviceId.ToString());
-                        deviceStatus.Success.Should().BeTrue();
-                    }
+                    // Memory cleanup - just verify system is responsive
+                    // DeviceMemories property doesn't exist in GetMemoryStatusResponse
+                    // Using MemoryStatus dictionary instead
+                    var hasMemoryData = memoryStatus.Data.MemoryStatus.Count > 0;
+                    hasMemoryData.Should().BeTrue();
                 }
             }
             catch

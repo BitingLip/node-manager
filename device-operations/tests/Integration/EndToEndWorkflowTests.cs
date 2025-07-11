@@ -64,23 +64,28 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
         var deviceListResponse = await _deviceService.GetDeviceListAsync();
         deviceListResponse.Success.Should().BeTrue();
         deviceListResponse.Data.Should().NotBeNull();
-        deviceListResponse.Data.Devices.Should().NotBeEmpty();
+        deviceListResponse.Data?.Devices.Should().NotBeEmpty();
 
-        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == "GPU" && d.IsAvailable);
+        if (deviceListResponse.Data == null || deviceListResponse.Data.Devices == null)
+            throw new InvalidOperationException("Device list response data or devices is null.");
+
+        if (deviceListResponse.Data == null || deviceListResponse.Data.Devices == null)
+            throw new InvalidOperationException("Device list response data or devices is null.");
+        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == DeviceType.GPU && d.IsAvailable);
         var deviceId = selectedDevice.Id.ToString();
 
         // Phase 2: Memory Allocation
         var memoryAllocateRequest = new PostMemoryAllocateRequest
         {
-            Size = 8589934592, // 8GB
-            DeviceId = deviceId,
-            Purpose = "Model Loading",
-            Priority = "High"
+            SizeBytes = 8589934592, // 8GB
+            MemoryType = "GPU"
         };
 
         var memoryResponse = await _memoryService.PostMemoryAllocateAsync(memoryAllocateRequest);
         memoryResponse.Success.Should().BeTrue();
         memoryResponse.Data.Should().NotBeNull();
+        if (memoryResponse.Data == null)
+            throw new InvalidOperationException("Memory allocation response data is null.");
         var allocationId = memoryResponse.Data.AllocationId;
 
         try
@@ -91,29 +96,29 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
             modelsResponse.Data.Should().NotBeNull();
             modelsResponse.Data.Models.Should().NotBeEmpty();
 
-            var selectedModel = modelsResponse.Data.Models.First(m => m.Type == "TextToImage" && m.Status == "Available");
+            var selectedModel = modelsResponse.Data.Models.First(m => m.Type == ModelType.SD15 && m.Status == ModelStatus.Available);
             var modelId = selectedModel.Id.ToString();
 
             var modelLoadRequest = new PostModelLoadRequest
             {
-                DeviceId = deviceId,
-                Precision = "FP16",
-                MaxMemoryUsage = 6442450944, // 6GB
-                OptimizationLevel = "Balanced"
+                ModelPath = selectedModel.FilePath,
+                ModelType = selectedModel.Type,
+                DeviceId = Guid.Parse(deviceId),
+                LoadingStrategy = "Standard"
             };
 
             var modelLoadResponse = await _modelService.PostModelLoadAsync(modelId, modelLoadRequest);
             modelLoadResponse.Success.Should().BeTrue();
             modelLoadResponse.Data.Should().NotBeNull();
-            modelLoadResponse.Data.Status.Should().Be("Loaded");
+            modelLoadResponse.Data?.Success.Should().BeTrue();
 
             try
             {
                 // Phase 4: Inference Execution
-                var inferenceRequest = new PostInferenceExecuteRequest
+                var inferenceRequest = new PostInferenceExecuteDeviceRequest
                 {
-                    ModelId = Guid.Parse(modelId),
-                    InferenceType = "TextToImage",
+                    ModelId = modelId,
+                    InferenceType = InferenceType.TextToImage,
                     Parameters = new Dictionary<string, object>
                     {
                         { "prompt", "A beautiful landscape with mountains and lakes" },
@@ -129,39 +134,37 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
                 var inferenceResponse = await _inferenceService.PostInferenceExecuteAsync(inferenceRequest, deviceId);
                 inferenceResponse.Success.Should().BeTrue();
                 inferenceResponse.Data.Should().NotBeNull();
-                inferenceResponse.Data.Status.Should().Be("Completed");
-                inferenceResponse.Data.Results.Should().ContainKey("GeneratedImages");
+                inferenceResponse.Data?.Status.Should().Be(InferenceStatus.Completed);
+                inferenceResponse.Data?.Results.Should().ContainKey("GeneratedImages");
 
                 // Phase 5: Postprocessing
-                var generatedImages = inferenceResponse.Data.Results["GeneratedImages"] as string[];
+                var generatedImages = inferenceResponse.Data?.Results["GeneratedImages"] as string[];
                 generatedImages.Should().NotBeNull();
                 generatedImages.Should().NotBeEmpty();
 
                 var postprocessingRequest = new PostPostprocessingUpscaleRequest
                 {
                     InputImagePath = generatedImages[0],
-                    UpscaleModel = "RealESRGAN",
-                    ScaleFactor = 2.0f,
-                    OutputFormat = "PNG"
+                    ModelName = "RealESRGAN",
+                    ScaleFactor = 2
                 };
 
                 var postprocessingResponse = await _postprocessingService.PostPostprocessingUpscaleAsync(postprocessingRequest);
                 postprocessingResponse.Success.Should().BeTrue();
                 postprocessingResponse.Data.Should().NotBeNull();
-                postprocessingResponse.Data.Status.Should().Be("Completed");
+                postprocessingResponse.Data.OperationId.Should().NotBeEmpty();
 
                 // Verify complete pipeline results
                 postprocessingResponse.Data.OutputImagePath.Should().NotBeNullOrEmpty();
-                postprocessingResponse.Data.ScaleFactor.Should().Be(2.0f);
+                postprocessingResponse.Data.ScaleFactor.Should().Be(2);
             }
             finally
             {
                 // Cleanup: Unload Model
                 var modelUnloadRequest = new PostModelUnloadRequest
                 {
-                    DeviceId = deviceId,
-                    Force = false,
-                    PreserveCacheData = false
+                    DeviceId = Guid.Parse(deviceId),
+                    Force = false
                 };
 
                 await _modelService.PostModelUnloadAsync(modelId, modelUnloadRequest);
@@ -173,7 +176,6 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
             var memoryDeallocateRequest = new DeleteMemoryDeallocateRequest
             {
                 AllocationId = allocationId,
-                DeviceId = deviceId,
                 Force = false
             };
 
@@ -186,33 +188,35 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
     {
         // Phase 1: Setup - Device and Memory
         var deviceListResponse = await _deviceService.GetDeviceListAsync();
-        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == "GPU" && d.IsAvailable);
+        if (deviceListResponse.Data == null || deviceListResponse.Data.Devices == null)
+            throw new InvalidOperationException("Device list response data or devices is null.");
+        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == DeviceType.GPU && d.IsAvailable);
         var deviceId = selectedDevice.Id.ToString();
 
         var memoryAllocateRequest = new PostMemoryAllocateRequest
         {
-            Size = 12884901888, // 12GB for batch processing
-            DeviceId = deviceId,
-            Purpose = "Batch Inference",
-            Priority = "High"
+            SizeBytes = 12884901888, // 12GB for batch processing
+            MemoryType = "GPU"
         };
 
         var memoryResponse = await _memoryService.PostMemoryAllocateAsync(memoryAllocateRequest);
+        memoryResponse.Success.Should().BeTrue();
+        memoryResponse.Data.Should().NotBeNull();
         var allocationId = memoryResponse.Data.AllocationId;
 
         try
         {
             // Phase 2: Model Loading
             var modelsResponse = await _modelService.GetModelsAsync();
-            var selectedModel = modelsResponse.Data.Models.First(m => m.Type == "TextToImage");
+            var selectedModel = modelsResponse.Data!.Models.First(m => m.Type == ModelType.SD15);
             var modelId = selectedModel.Id.ToString();
 
             var modelLoadRequest = new PostModelLoadRequest
             {
-                DeviceId = deviceId,
-                Precision = "FP16",
-                MaxMemoryUsage = 10737418240, // 10GB
-                OptimizationLevel = "Performance"
+                ModelPath = selectedModel.FilePath,
+                ModelType = selectedModel.Type,
+                DeviceId = Guid.Parse(deviceId),
+                LoadingStrategy = "Performance"
             };
 
             await _modelService.PostModelLoadAsync(modelId, modelLoadRequest);
@@ -230,10 +234,10 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
 
                 var batchTasks = batchPrompts.Select(async (prompt, index) =>
                 {
-                    var inferenceRequest = new PostInferenceExecuteRequest
+                    var inferenceRequest = new PostInferenceExecuteDeviceRequest
                     {
-                        ModelId = Guid.Parse(modelId),
-                        InferenceType = "TextToImage",
+                        ModelId = modelId,
+                        InferenceType = InferenceType.TextToImage,
                         Parameters = new Dictionary<string, object>
                         {
                             { "prompt", prompt },
@@ -254,21 +258,22 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
                 batchResults.Should().AllSatisfy(result =>
                 {
                     result.Success.Should().BeTrue();
-                    result.Data.Status.Should().Be("Completed");
-                    result.Data.Results.Should().ContainKey("GeneratedImages");
+                    result.Data?.Status.Should().Be(InferenceStatus.Completed);
+                    result.Data?.Results.Should().ContainKey("GeneratedImages");
                 });
 
                 // Phase 5: Batch Postprocessing
                 var postprocessingTasks = batchResults.Select(async result =>
                 {
                     var generatedImages = result.Data.Results["GeneratedImages"] as string[];
-                    var postprocessingRequest = new PostPostprocessingSafetyCheckRequest
+                    var postprocessingRequest = new PostPostprocessingEnhanceRequest
                     {
-                        ImagePath = generatedImages[0],
-                        CheckTypes = new List<string> { "NSFW", "Violence", "Inappropriate" }
+                        InputImagePath = generatedImages[0],
+                        EnhancementType = "general",
+                        Strength = 0.5f
                     };
 
-                    return await _postprocessingService.PostPostprocessingSafetyCheckAsync(postprocessingRequest);
+                    return await _postprocessingService.PostPostprocessingEnhanceAsync(postprocessingRequest);
                 });
 
                 var postprocessingResults = await Task.WhenAll(postprocessingTasks);
@@ -277,8 +282,8 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
                 postprocessingResults.Should().AllSatisfy(result =>
                 {
                     result.Success.Should().BeTrue();
-                    result.Data.Status.Should().Be("Completed");
-                    result.Data.IsSafe.Should().BeTrue();
+                    result.Data?.OperationId.Should().NotBeEmpty();
+                    result.Data?.OutputImagePath.Should().NotBeEmpty();
                 });
             }
             finally
@@ -286,8 +291,7 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
                 // Cleanup: Unload Model
                 var modelUnloadRequest = new PostModelUnloadRequest
                 {
-                    DeviceId = deviceId,
-                    Force = false
+                        Force = false
                 };
 
                 await _modelService.PostModelUnloadAsync(modelId, modelUnloadRequest);
@@ -299,7 +303,6 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
             var memoryDeallocateRequest = new DeleteMemoryDeallocateRequest
             {
                 AllocationId = allocationId,
-                DeviceId = deviceId,
                 Force = false
             };
 
@@ -316,17 +319,17 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
     {
         // Phase 1: Setup resources
         var deviceListResponse = await _deviceService.GetDeviceListAsync();
-        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == "GPU" && d.IsAvailable);
+        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == DeviceType.GPU && d.IsAvailable);
         var deviceId = selectedDevice.Id.ToString();
 
         var memoryAllocateRequest = new PostMemoryAllocateRequest
         {
-            Size = 4294967296, // 4GB
-            DeviceId = deviceId,
-            Purpose = "Error Recovery Test"
+            SizeBytes = 4294967296, // 4GB
+            MemoryType = "GPU"
         };
 
         var memoryResponse = await _memoryService.PostMemoryAllocateAsync(memoryAllocateRequest);
+        memoryResponse.Data.Should().NotBeNull();
         var allocationId = memoryResponse.Data.AllocationId;
 
         var modelsResponse = await _modelService.GetModelsAsync();
@@ -335,20 +338,22 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
 
         var modelLoadRequest = new PostModelLoadRequest
         {
-            DeviceId = deviceId,
-            Precision = "FP16"
+            ModelPath = selectedModel.FilePath,
+            ModelType = selectedModel.Type,
+            DeviceId = Guid.Parse(deviceId),
+            LoadingStrategy = "Standard"
         };
 
         await _modelService.PostModelLoadAsync(modelId, modelLoadRequest);
 
         // Phase 2: Simulate error during inference
-        Exception caughtException = null;
+        Exception? caughtException = null;
         try
         {
-            var invalidInferenceRequest = new PostInferenceExecuteRequest
+            var invalidInferenceRequest = new PostInferenceExecuteDeviceRequest
             {
-                ModelId = Guid.Parse(modelId),
-                InferenceType = "InvalidType", // This should cause an error
+                ModelId = modelId,
+                InferenceType = InferenceType.TextToImage, // Use valid type but invalid params instead
                 Parameters = new Dictionary<string, object>
                 {
                     { "invalid_param", "invalid_value" }
@@ -368,7 +373,7 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
         // Phase 3: Cleanup should still work despite error
         var modelUnloadRequest = new PostModelUnloadRequest
         {
-            DeviceId = deviceId,
+            DeviceId = Guid.Parse(deviceId),
             Force = true // Force unload due to error condition
         };
 
@@ -378,7 +383,6 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
         var memoryDeallocateRequest = new DeleteMemoryDeallocateRequest
         {
             AllocationId = allocationId,
-            DeviceId = deviceId,
             Force = true // Force deallocation due to error condition
         };
 
@@ -391,7 +395,10 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
         
         // Memory should be available again after cleanup
         var deviceMemory = finalMemoryStatus.Data;
-        deviceMemory.AvailableMemory.Should().BeGreaterThan(0);
+        deviceMemory.MemoryStatus.Should().ContainKey("available_memory_gb");
+        var availableMemory = deviceMemory.MemoryStatus["available_memory_gb"];
+        availableMemory.Should().NotBeNull();
+        Convert.ToDouble(availableMemory).Should().BeGreaterThan(0);
     }
 
     [Fact]
@@ -399,7 +406,7 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
     {
         // Phase 1: Start multiple inference sessions
         var deviceListResponse = await _deviceService.GetDeviceListAsync();
-        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == "GPU" && d.IsAvailable);
+        var selectedDevice = deviceListResponse.Data.Devices.First(d => d.Type == DeviceType.GPU && d.IsAvailable);
         var deviceId = selectedDevice.Id.ToString();
 
         // Load a model first
@@ -409,8 +416,10 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
 
         var modelLoadRequest = new PostModelLoadRequest
         {
-            DeviceId = deviceId,
-            Precision = "FP16"
+            ModelPath = selectedModel.FilePath,
+            ModelType = selectedModel.Type,
+            DeviceId = Guid.Parse(deviceId),
+            LoadingStrategy = "Standard"
         };
 
         await _modelService.PostModelLoadAsync(modelId, modelLoadRequest);
@@ -422,10 +431,10 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
 
             for (int i = 0; i < 3; i++)
             {
-                var inferenceRequest = new PostInferenceExecuteRequest
+                var inferenceRequest = new PostInferenceExecuteDeviceRequest
                 {
-                    ModelId = Guid.Parse(modelId),
-                    InferenceType = "TextToImage",
+                    ModelId = modelId,
+                    InferenceType = InferenceType.TextToImage,
                     Parameters = new Dictionary<string, object>
                     {
                         { "prompt", $"Test image {i + 1}" },
@@ -448,7 +457,9 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
             // Verify sessions are tracked
             sessionIds.Should().AllSatisfy(sessionId =>
             {
-                var session = sessionsResponse.Data.Sessions.FirstOrDefault(s => s.Id == sessionId);
+                var sessions = sessionsResponse.Data.Sessions;
+                sessions.Should().NotBeNull();
+                var session = sessions?.FirstOrDefault(s => s.SessionId == sessionId);
                 session.Should().NotBeNull();
                 session.Status.Should().BeOneOf("Running", "Completed", "Queued");
             });
@@ -456,10 +467,10 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
             // Phase 3: Individual session details
             foreach (var sessionId in sessionIds)
             {
-                var sessionDetailResponse = await _inferenceService.GetInferenceSessionAsync(sessionId);
+                var sessionDetailResponse = await _inferenceService.GetInferenceSessionAsync(sessionId.ToString());
                 sessionDetailResponse.Success.Should().BeTrue();
                 sessionDetailResponse.Data.Should().NotBeNull();
-                sessionDetailResponse.Data.Session.Id.Should().Be(sessionId);
+                sessionDetailResponse.Data!.Session.SessionId.Should().Be(sessionId);
             }
         }
         finally
@@ -467,7 +478,6 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
             // Cleanup: Unload model
             var modelUnloadRequest = new PostModelUnloadRequest
             {
-                DeviceId = deviceId,
                 Force = false
             };
 
@@ -484,6 +494,8 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
     {
         // Phase 1: Setup
         var deviceListResponse = await _deviceService.GetDeviceListAsync();
+        deviceListResponse.Data.Should().NotBeNull();
+        deviceListResponse.Data.Devices.Should().NotBeNull();
         var availableDevices = deviceListResponse.Data.Devices.Where(d => d.IsAvailable).ToList();
         availableDevices.Should().NotBeEmpty();
 
@@ -517,6 +529,8 @@ public class EndToEndWorkflowTests : IClassFixture<WebApplicationFactory<Program
         // Phase 5: Verify system stability
         var finalDeviceStatus = await _deviceService.GetDeviceListAsync();
         finalDeviceStatus.Success.Should().BeTrue();
+        finalDeviceStatus.Data.Should().NotBeNull();
+        finalDeviceStatus.Data.Devices.Should().NotBeNull();
         finalDeviceStatus.Data.Devices.Should().HaveCount(deviceListResponse.Data.Devices.Count);
     }
 
