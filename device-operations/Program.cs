@@ -59,19 +59,14 @@ public class Program
                 options.JsonSerializerOptions.WriteIndented = true;
             });
 
-        // Add API documentation
-        builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddSwaggerGen(c =>
-        {
-            c.SwaggerDoc("v1", new() { 
-                Title = "Device Operations API", 
-                Version = "v1",
-                Description = "ML Device Operations and Inference API"
-            });
-        });
+        // Add comprehensive API documentation
+        builder.Services.AddSwaggerDocumentation();
 
         // Register application services using extension methods
         builder.Services.RegisterApplicationServices(builder.Configuration);
+
+        // Add comprehensive health checks
+        builder.Services.AddApplicationHealthChecks(builder.Configuration);
 
         return builder;
     }
@@ -81,19 +76,14 @@ public class Program
         // Configure middleware pipeline using extension methods
         app.ConfigureMiddlewarePipeline();
 
+        // Configure health check endpoints
+        app.UseApplicationHealthChecks();
+
         // Configure API endpoints
         app.MapControllers();
 
-        // Configure Swagger in development
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseSwagger();
-            app.UseSwaggerUI(c =>
-            {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "Device Operations API v1");
-                c.RoutePrefix = string.Empty; // Serve Swagger at root
-            });
-        }
+        // Configure comprehensive Swagger documentation
+        app.UseSwaggerDocumentation(app.Environment);
     }
 
     private static IConfiguration GetConfiguration()

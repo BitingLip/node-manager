@@ -13,6 +13,7 @@ namespace DeviceOperations.Controllers
     /// </summary>
     [ApiController]
     [Route("api/postprocessing")]
+    [Tags("Postprocessing Operations")]
     public class ControllerPostprocessing : ControllerBase
     {
         private readonly IServicePostprocessing _servicePostprocessing;

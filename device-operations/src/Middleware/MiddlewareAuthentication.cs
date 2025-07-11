@@ -27,6 +27,13 @@ public class MiddlewareAuthentication
             return;
         }
 
+        // Skip authentication for Swagger/OpenAPI documentation endpoints
+        if (IsSwaggerEndpoint(context.Request.Path))
+        {
+            await _next(context);
+            return;
+        }
+
         // Skip authentication if disabled in configuration
         if (!_configuration.GetValue<bool>("Authentication:Enabled", false))
         {
@@ -157,6 +164,14 @@ public class MiddlewareAuthentication
     private static bool IsHealthCheckEndpoint(string path)
     {
         return path.StartsWith("/health", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSwaggerEndpoint(string path)
+    {
+        return path.StartsWith("/api-docs", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/", StringComparison.OrdinalIgnoreCase) || // Allow root in development
+               path.StartsWith("/swagger-ui", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task WriteUnauthorizedResponse(HttpContext context)

@@ -81,23 +81,14 @@ public static class ExtensionsApplicationBuilder
     }
 
     /// <summary>
-    /// Configure health check endpoints
+    /// Configure health check endpoints (Removed - handled by ExtensionsHealthChecks)
     /// </summary>
     /// <param name="app">The application builder</param>
     /// <returns>The application builder for chaining</returns>
     public static WebApplication ConfigureHealthChecks(this WebApplication app)
     {
-        app.MapGet("/health", () => Results.Ok(new { 
-            Status = "Healthy", 
-            Timestamp = DateTime.UtcNow,
-            Version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString()
-        }));
-
-        app.MapGet("/health/ready", () => Results.Ok(new { 
-            Status = "Ready", 
-            Timestamp = DateTime.UtcNow 
-        }));
-
+        // Health check endpoints are now configured in ExtensionsHealthChecks.UseApplicationHealthChecks()
+        // This method is kept for backwards compatibility but no longer adds duplicate endpoints
         return app;
     }
 }

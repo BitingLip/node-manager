@@ -13,6 +13,7 @@ namespace DeviceOperations.Controllers
     /// </summary>
     [ApiController]
     [Route("api/processing")]
+    [Tags("Processing Operations")]
     public class ControllerProcessing : ControllerBase
     {
         private readonly IServiceProcessing _serviceProcessing;
