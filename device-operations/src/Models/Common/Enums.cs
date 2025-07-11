@@ -48,7 +48,8 @@ public enum DeviceResetType
 {
     Soft = 0,
     Hard = 1,
-    Complete = 2
+    Driver = 2,
+    Complete = 3
 }
 
 /// <summary>
@@ -59,7 +60,11 @@ public enum BenchmarkType
     Performance = 0,
     Memory = 1,
     Stability = 2,
-    Power = 3
+    Power = 3,
+    Compute = 4,
+    Inference = 5,
+    Mixed = 6,
+    Stress = 7
 }
 
 /// <summary>
@@ -70,7 +75,11 @@ public enum OptimizationTarget
     Performance = 0,
     Memory = 1,
     Power = 2,
-    Balanced = 3
+    Balanced = 3,
+    PowerEfficiency = 4,
+    MemoryUsage = 5,
+    Throughput = 6,
+    Latency = 7
 }
 
 /// <summary>
@@ -82,4 +91,17 @@ public enum ModelPrecision
     FP16 = 1,
     INT8 = 2,
     AUTO = 3
+}
+
+/// <summary>
+/// Workload type enumeration
+/// </summary>
+public enum WorkloadType
+{
+    ImageGeneration = 0,
+    TextGeneration = 1,
+    ImageToImage = 2,
+    Upscaling = 3,
+    BatchProcessing = 4,
+    Interactive = 5
 }

@@ -263,41 +263,6 @@ public static class RequestsDevice
 }
 
 /// <summary>
-/// Device reset type enumeration
-/// </summary>
-public enum DeviceResetType
-{
-    Soft = 0,
-    Hard = 1,
-    Driver = 2,
-    Complete = 3
-}
-
-/// <summary>
-/// Benchmark type enumeration
-/// </summary>
-public enum BenchmarkType
-{
-    Compute = 0,
-    Memory = 1,
-    Inference = 2,
-    Mixed = 3,
-    Stress = 4
-}
-
-/// <summary>
-/// Optimization target enumeration
-/// </summary>
-public enum OptimizationTarget
-{
-    Performance = 0,
-    PowerEfficiency = 1,
-    MemoryUsage = 2,
-    Throughput = 3,
-    Latency = 4
-}
-
-/// <summary>
 /// Workload type enumeration
 /// </summary>
 public enum WorkloadType
