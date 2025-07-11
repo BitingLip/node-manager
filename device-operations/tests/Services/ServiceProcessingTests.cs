@@ -12,13 +12,13 @@ namespace DeviceOperations.Tests.Services;
 /// <summary>
 /// Unit tests for ServiceProcessing
 /// </summary>
-public class ServiceProcessingTestsSimplified
+public class ServiceProcessingTests
 {
     private readonly Mock<ILogger<ServiceProcessing>> _mockLogger;
     private readonly Mock<IPythonWorkerService> _mockPythonWorkerService;
     private readonly ServiceProcessing _serviceProcessing;
 
-    public ServiceProcessingTestsSimplified()
+    public ServiceProcessingTests()
     {
         _mockLogger = new Mock<ILogger<ServiceProcessing>>();
         _mockPythonWorkerService = new Mock<IPythonWorkerService>();

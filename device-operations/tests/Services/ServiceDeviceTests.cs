@@ -40,7 +40,7 @@ public class ServiceDeviceTests
         result.Should().NotBeNull();
         result.Success.Should().BeTrue();
         result.Data.Should().NotBeNull();
-        result.Data.Devices.Should().NotBeNull();
+        result.Data!.Devices.Should().NotBeNull();
         result.Data.TotalCount.Should().BeGreaterOrEqualTo(0);
     }
 
@@ -56,7 +56,7 @@ public class ServiceDeviceTests
         result2.Should().NotBeNull();
         result1.Success.Should().BeTrue();
         result2.Success.Should().BeTrue();
-        result1.Data.TotalCount.Should().Be(result2.Data.TotalCount);
+        result1.Data!.TotalCount.Should().Be(result2.Data!.TotalCount);
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class ServiceDeviceTests
     public async Task PostDeviceHealthAsync_ShouldReturnHealthCheckResults_WhenSuccessful()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
         var request = new PostDeviceHealthRequest
         {
             HealthCheckType = "comprehensive",
@@ -161,14 +161,14 @@ public class ServiceDeviceTests
     public async Task PostDevicePowerAsync_ShouldHandlePowerActions_Gracefully()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
         var request = new PostDevicePowerRequest
         {
             PowerAction = "suspend"
         };
 
         // Act
-        var result = await _serviceDevice.PostDevicePowerAsync(deviceId, request);
+        var result = await _serviceDevice.PostDevicePowerAsync(request, deviceId);
 
         // Assert
         result.Should().NotBeNull();
@@ -179,14 +179,14 @@ public class ServiceDeviceTests
     public async Task PostDevicePowerAsync_ShouldValidateDeviceId()
     {
         // Arrange
-        var deviceId = Guid.Empty;
+        var deviceId = Guid.Empty.ToString();
         var request = new PostDevicePowerRequest
         {
             PowerAction = "restart"
         };
 
         // Act
-        var result = await _serviceDevice.PostDevicePowerAsync(deviceId, request);
+        var result = await _serviceDevice.PostDevicePowerAsync(request, deviceId);
 
         // Assert
         result.Should().NotBeNull();
@@ -201,15 +201,15 @@ public class ServiceDeviceTests
     public async Task PostDeviceResetAsync_ShouldHandleResetRequests_Gracefully()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
         var request = new PostDeviceResetRequest
         {
-            ResetType = DeviceResetType.Soft,
+            ResetType = DeviceOperations.Models.Requests.DeviceResetType.Soft,
             Force = false
         };
 
         // Act
-        var result = await _serviceDevice.PostDeviceResetAsync(deviceId, request);
+        var result = await _serviceDevice.PostDeviceResetAsync(request, deviceId);
 
         // Assert
         result.Should().NotBeNull();
@@ -224,10 +224,10 @@ public class ServiceDeviceTests
     public async Task PostDeviceBenchmarkAsync_ShouldHandleBenchmarkRequests_Gracefully()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
         var request = new PostDeviceBenchmarkRequest
         {
-            BenchmarkType = BenchmarkType.Performance,
+            BenchmarkType = DeviceOperations.Models.Requests.BenchmarkType.Compute,
             DurationSeconds = 60
         };
 
@@ -247,10 +247,10 @@ public class ServiceDeviceTests
     public async Task PostDeviceOptimizeAsync_ShouldHandleOptimizationRequests_Gracefully()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
         var request = new PostDeviceOptimizeRequest
         {
-            Target = OptimizationTarget.Performance,
+            Target = DeviceOperations.Models.Requests.OptimizationTarget.Performance,
             AutoApply = false
         };
 
@@ -270,7 +270,7 @@ public class ServiceDeviceTests
     public async Task GetDeviceConfigAsync_ShouldReturnConfiguration_WhenSuccessful()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
 
         // Act
         var result = await _serviceDevice.GetDeviceConfigAsync(deviceId);
@@ -284,7 +284,7 @@ public class ServiceDeviceTests
     public async Task PutDeviceConfigAsync_ShouldHandleConfigurationUpdates_Gracefully()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
         var request = new PutDeviceConfigRequest
         {
             Configuration = new Dictionary<string, object>
@@ -311,7 +311,7 @@ public class ServiceDeviceTests
     public async Task GetDeviceCapabilitiesAsync_ShouldReturnCapabilities_WhenSuccessful()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
 
         // Act
         var result = await _serviceDevice.GetDeviceCapabilitiesAsync(deviceId);
@@ -325,7 +325,7 @@ public class ServiceDeviceTests
     public async Task GetDeviceDetailsAsync_ShouldReturnDetails_WhenSuccessful()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
 
         // Act
         var result = await _serviceDevice.GetDeviceDetailsAsync(deviceId);
@@ -339,7 +339,7 @@ public class ServiceDeviceTests
     public async Task GetDeviceDriversAsync_ShouldReturnDriverInfo_WhenSuccessful()
     {
         // Arrange
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
 
         // Act
         var result = await _serviceDevice.GetDeviceDriversAsync(deviceId);
