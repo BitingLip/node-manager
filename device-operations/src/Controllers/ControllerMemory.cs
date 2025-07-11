@@ -224,7 +224,7 @@ namespace DeviceOperations.Controllers
         /// <response code="200">Returns memory allocations for the device</response>
         /// <response code="404">Device not found</response>
         /// <response code="500">Internal server error occurred</response>
-        [HttpGet("allocations/{idDevice}")]
+        [HttpGet("allocations/device/{idDevice}")]
         [ProducesResponseType(typeof(ApiResponse<GetMemoryAllocationsResponse>), 200)]
         [ProducesResponseType(typeof(ApiResponse<object>), 404)]
         [ProducesResponseType(typeof(ApiResponse<object>), 500)]
@@ -269,7 +269,7 @@ namespace DeviceOperations.Controllers
         /// <response code="200">Returns allocation details</response>
         /// <response code="404">Allocation not found</response>
         /// <response code="500">Internal server error occurred</response>
-        [HttpGet("allocations/{allocationId}")]
+        [HttpGet("allocation/{allocationId}")]
         [ProducesResponseType(typeof(ApiResponse<GetMemoryAllocationResponse>), 200)]
         [ProducesResponseType(typeof(ApiResponse<object>), 404)]
         [ProducesResponseType(typeof(ApiResponse<object>), 500)]
@@ -328,7 +328,7 @@ namespace DeviceOperations.Controllers
                         new ErrorDetails { Message = "Memory allocation request cannot be null" }));
                 }
 
-                _logger.LogInformation("Allocating memory on optimal device: {Size} bytes", request.Size);
+                _logger.LogInformation("Allocating memory on optimal device: {SizeBytes} bytes", request.SizeBytes);
                 var result = await _serviceMemory.PostMemoryAllocateAsync(request);
 
                 if (result.IsSuccess)
@@ -377,7 +377,7 @@ namespace DeviceOperations.Controllers
                         new ErrorDetails { Message = "Memory allocation request cannot be null" }));
                 }
 
-                _logger.LogInformation("Allocating memory on device {DeviceId}: {Size} bytes", idDevice, request.Size);
+                _logger.LogInformation("Allocating memory on device {DeviceId}: {SizeBytes} bytes", idDevice, request.SizeBytes);
                 var result = await _serviceMemory.PostMemoryAllocateAsync(request, idDevice);
 
                 if (result.IsSuccess)

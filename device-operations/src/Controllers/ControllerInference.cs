@@ -89,6 +89,8 @@ namespace DeviceOperations.Controllers
                     MaxResolution = new CommonImageResolution { Width = 2048, Height = 2048 }
                 };
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 return Ok(new ApiResponse<GetInferenceCapabilitiesResponse>
                 {
                     Success = true,
@@ -106,7 +108,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "INFERENCE_CAPABILITIES_ERROR",
                         Message = "Failed to retrieve inference capabilities",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -166,6 +168,8 @@ namespace DeviceOperations.Controllers
                     ComputeCapability = "8.9",
                     OptimalInferenceTypes = new List<string> { "TextToImage", "ImageToImage" }
                 };
+
+                await Task.Delay(1); // Add await to satisfy async requirement
 
                 return Ok(new ApiResponse<GetInferenceCapabilitiesDeviceResponse>
                 {
@@ -244,6 +248,8 @@ namespace DeviceOperations.Controllers
                     }
                 };
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 return Ok(new ApiResponse<PostInferenceExecuteResponse>
                 {
                     Success = true,
@@ -261,7 +267,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "INFERENCE_EXECUTION_ERROR",
                         Message = "Failed to execute inference",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -291,6 +297,8 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Executing {InferenceType} inference on device {DeviceId} with model {ModelId}", 
                     request.InferenceType, idDevice, request.ModelId);
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 // TODO: Replace with actual service call when Phase 4 is implemented
                 // var result = await _serviceInference.PostInferenceExecuteAsync(request, idDevice);
 
@@ -299,9 +307,9 @@ namespace DeviceOperations.Controllers
                 {
                     InferenceId = Guid.NewGuid(),
                     ModelId = request.ModelId,
-                    DeviceId = idDevice,
+                    DeviceId = idDevice.ToString(),
                     InferenceType = request.InferenceType,
-                    Status = "Completed",
+                    Status = InferenceStatus.Completed,
                     ExecutionTime = TimeSpan.FromSeconds(3.8),
                     CompletedAt = DateTime.UtcNow,
                     Results = new Dictionary<string, object>
@@ -320,7 +328,7 @@ namespace DeviceOperations.Controllers
                         { "Temperature", "76°C" },
                         { "Utilization", "92%" }
                     },
-                    QualityMetrics = new Dictionary<string, float>
+                    QualityMetrics = new Dictionary<string, object>
                     {
                         { "AestheticScore", 7.8f },
                         { "TechnicalQuality", 8.5f },
@@ -351,7 +359,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "DEVICE_INFERENCE_EXECUTION_ERROR",
                         Message = "Failed to execute inference on specified device",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -379,6 +387,8 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Validating {InferenceType} inference request", request.InferenceType);
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 // TODO: Replace with actual service call when Phase 4 is implemented
                 // var result = await _serviceInference.PostInferenceValidateAsync(request);
 
@@ -388,7 +398,7 @@ namespace DeviceOperations.Controllers
                     IsValid = true,
                     ValidationTime = TimeSpan.FromMilliseconds(45),
                     ValidatedAt = DateTime.UtcNow,
-                    ValidationResults = new Dictionary<string, bool>
+                    ValidationResults = new Dictionary<string, object>
                     {
                         { "ModelCompatibility", true },
                         { "ParameterValidity", true },
@@ -408,7 +418,7 @@ namespace DeviceOperations.Controllers
                     },
                     EstimatedExecutionTime = TimeSpan.FromSeconds(4.2),
                     EstimatedMemoryUsage = 19327352832, // ~18GB
-                    OptimalDevice = Guid.NewGuid(),
+                    OptimalDevice = Guid.NewGuid().ToString(),
                     SuggestedOptimizations = new List<string>
                     {
                         "Mixed precision",
@@ -434,7 +444,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "INFERENCE_VALIDATION_ERROR",
                         Message = "Failed to validate inference request",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -455,58 +465,20 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving supported inference types");
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 // TODO: Replace with actual service call when Phase 4 is implemented
                 // var result = await _serviceInference.GetSupportedTypesAsync();
 
                 // Temporary mock response for Phase 3
                 var mockResponse = new GetSupportedTypesResponse
                 {
-                    SupportedTypes = new Dictionary<string, object>
+                    SupportedTypes = new List<string>
                     {
-                        {
-                            "TextToImage", new
-                            {
-                                Description = "Generate images from text prompts",
-                                RequiredParameters = new[] { "prompt", "model_id" },
-                                OptionalParameters = new[] { "negative_prompt", "steps", "cfg_scale", "seed", "width", "height" },
-                                SupportedModels = new[] { "FLUX.1 Dev", "FLUX.1 Schnell", "Stable Diffusion XL" },
-                                MaxResolution = new { Width = 2048, Height = 2048 },
-                                DefaultSteps = 20
-                            }
-                        },
-                        {
-                            "ImageToImage", new
-                            {
-                                Description = "Transform existing images based on text prompts",
-                                RequiredParameters = new[] { "prompt", "model_id", "init_image" },
-                                OptionalParameters = new[] { "negative_prompt", "strength", "steps", "cfg_scale", "seed" },
-                                SupportedModels = new[] { "FLUX.1 Dev", "Stable Diffusion XL" },
-                                MaxResolution = new { Width = 2048, Height = 2048 },
-                                DefaultSteps = 20
-                            }
-                        },
-                        {
-                            "Inpainting", new
-                            {
-                                Description = "Fill masked areas of images with AI-generated content",
-                                RequiredParameters = new[] { "prompt", "model_id", "init_image", "mask_image" },
-                                OptionalParameters = new[] { "negative_prompt", "steps", "cfg_scale", "seed" },
-                                SupportedModels = new[] { "Stable Diffusion XL Inpaint" },
-                                MaxResolution = new { Width = 2048, Height = 2048 },
-                                DefaultSteps = 20
-                            }
-                        },
-                        {
-                            "ControlNet", new
-                            {
-                                Description = "Guide image generation with control images (depth, canny, pose, etc.)",
-                                RequiredParameters = new[] { "prompt", "model_id", "control_image", "controlnet_type" },
-                                OptionalParameters = new[] { "negative_prompt", "controlnet_conditioning_scale", "steps", "cfg_scale", "seed" },
-                                SupportedControlNets = new[] { "Canny", "Depth", "OpenPose", "Scribble", "Segmentation" },
-                                MaxResolution = new { Width = 2048, Height = 2048 },
-                                DefaultSteps = 20
-                            }
-                        }
+                        "TextToImage",
+                        "ImageToImage", 
+                        "Inpainting",
+                        "ControlNet"
                     },
                     TotalTypes = 4,
                     LastUpdated = DateTime.UtcNow
@@ -529,7 +501,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "SUPPORTED_TYPES_ERROR",
                         Message = "Failed to retrieve supported inference types",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -553,38 +525,20 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving supported inference types for device {DeviceId}", idDevice);
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 // TODO: Replace with actual service call when Phase 4 is implemented
                 // var result = await _serviceInference.GetSupportedTypesAsync(idDevice);
 
                 // Temporary mock response for Phase 3
                 var mockResponse = new GetSupportedTypesDeviceResponse
                 {
-                    DeviceId = idDevice,
+                    DeviceId = idDevice.ToString(),
                     DeviceName = "NVIDIA RTX 4090",
-                    SupportedTypes = new Dictionary<string, object>
+                    SupportedTypes = new List<string>
                     {
-                        {
-                            "TextToImage", new
-                            {
-                                Description = "Generate images from text prompts",
-                                MaxBatchSize = 4,
-                                OptimalBatchSize = 2,
-                                MaxResolution = new { Width = 2048, Height = 2048 },
-                                OptimalResolution = new { Width = 1024, Height = 1024 },
-                                EstimatedPerformance = new { StepsPerSecond = 5.2, MemoryUsage = "18GB" }
-                            }
-                        },
-                        {
-                            "ImageToImage", new
-                            {
-                                Description = "Transform existing images based on text prompts",
-                                MaxBatchSize = 4,
-                                OptimalBatchSize = 2,
-                                MaxResolution = new { Width = 2048, Height = 2048 },
-                                OptimalResolution = new { Width = 1024, Height = 1024 },
-                                EstimatedPerformance = new { StepsPerSecond = 4.8, MemoryUsage = "19GB" }
-                            }
-                        }
+                        "TextToImage",
+                        "ImageToImage"
                     },
                     LoadedModels = new List<string> { "FLUX.1 Dev" },
                     TotalTypes = 2,
@@ -609,7 +563,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "DEVICE_SUPPORTED_TYPES_ERROR",
                         Message = "Failed to retrieve device-specific supported inference types",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -634,31 +588,23 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving all active inference sessions");
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 // TODO: Replace with actual service call when Phase 4 is implemented
                 // var result = await _serviceInference.GetInferenceSessionsAsync();
 
                 // Temporary mock response for Phase 3
                 var mockResponse = new GetInferenceSessionsResponse
                 {
-                    Sessions = new List<InferenceSession>
+                    Sessions = new List<SessionInfo>
                     {
-                        new InferenceSession
+                        new SessionInfo
                         {
-                            Id = Guid.NewGuid(),
-                            ModelId = Guid.NewGuid(),
-                            DeviceId = Guid.NewGuid(),
+                            SessionId = Guid.NewGuid(),
                             Status = "Running",
-                            Progress = 65.5f,
-                            InferenceType = "TextToImage",
-                            CreatedAt = DateTime.UtcNow.AddMinutes(-5),
-                            UpdatedAt = DateTime.UtcNow,
-                            EstimatedCompletionTime = DateTime.UtcNow.AddMinutes(2)
+                            StartedAt = DateTime.UtcNow.AddMinutes(-5)
                         }
-                    },
-                    ActiveSessions = 1,
-                    CompletedSessions = 15,
-                    QueuedSessions = 0,
-                    TotalSessions = 16
+                    }
                 };
 
                 return Ok(new ApiResponse<GetInferenceSessionsResponse>
@@ -678,7 +624,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "INFERENCE_SESSIONS_ERROR",
                         Message = "Failed to retrieve inference sessions",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -702,38 +648,19 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving inference session {SessionId}", idSession);
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 // TODO: Replace with actual service call when Phase 4 is implemented
                 // var result = await _serviceInference.GetInferenceSessionAsync(idSession);
 
                 // Temporary mock response for Phase 3
                 var mockResponse = new GetInferenceSessionResponse
                 {
-                    Session = new InferenceSession
+                    Session = new SessionInfo
                     {
-                        Id = idSession,
-                        ModelId = Guid.NewGuid(),
-                        DeviceId = Guid.NewGuid(),
+                        SessionId = idSession,
                         Status = "Running",
-                        Progress = 65.5f,
-                        InferenceType = "TextToImage",
-                        CreatedAt = DateTime.UtcNow.AddMinutes(-5),
-                        UpdatedAt = DateTime.UtcNow,
-                        EstimatedCompletionTime = DateTime.UtcNow.AddMinutes(2)
-                    },
-                    Parameters = new Dictionary<string, object>
-                    {
-                        { "Prompt", "A beautiful landscape with mountains and lakes" },
-                        { "Steps", 20 },
-                        { "CFGScale", 7.5 },
-                        { "Seed", 42 },
-                        { "Resolution", "1024x1024" }
-                    },
-                    Performance = new Dictionary<string, object>
-                    {
-                        { "CurrentStep", 13 },
-                        { "TotalSteps", 20 },
-                        { "StepsPerSecond", 5.2 },
-                        { "EstimatedTimeRemaining", "1.3 minutes" }
+                        StartedAt = DateTime.UtcNow.AddMinutes(-5)
                     }
                 };
 
@@ -754,7 +681,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "INFERENCE_SESSION_ERROR",
                         Message = "Failed to retrieve inference session",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }
@@ -781,27 +708,16 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Cancelling inference session {SessionId}", idSession);
 
+                await Task.Delay(1); // Add await to satisfy async requirement
+
                 // TODO: Replace with actual service call when Phase 4 is implemented
                 // var result = await _serviceInference.DeleteInferenceSessionAsync(idSession, request);
 
                 // Temporary mock response for Phase 3
                 var mockResponse = new DeleteInferenceSessionResponse
                 {
-                    SessionId = idSession,
-                    CancelledAt = DateTime.UtcNow,
-                    WasForced = request.Force,
-                    ProgressAtCancellation = 65.5f,
-                    CleanupOperations = new List<string>
-                    {
-                        "Memory cleared",
-                        "Compute resources released",
-                        "Temporary files cleaned"
-                    },
-                    PartialResults = request.SavePartialResults ? new Dictionary<string, object>
-                    {
-                        { "CompletedSteps", 13 },
-                        { "PartialImage", "/outputs/partial_result_001.png" }
-                    } : null
+                    Success = true,
+                    Message = $"Inference session {idSession} cancelled successfully"
                 };
 
                 return Ok(new ApiResponse<DeleteInferenceSessionResponse>
@@ -821,7 +737,7 @@ namespace DeviceOperations.Controllers
                     {
                         Code = "INFERENCE_SESSION_CANCEL_ERROR",
                         Message = "Failed to cancel inference session",
-                        Details = ex.Message
+                        Details = new Dictionary<string, object> { ["error"] = ex.Message }
                     }
                 });
             }

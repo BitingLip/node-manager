@@ -214,7 +214,7 @@ namespace DeviceOperations.Services.Device
             }
         }
 
-        public async Task<ApiResponse<GetDeviceHealthResponse>> GetDeviceHealthAsync(string deviceId)
+        public Task<ApiResponse<GetDeviceHealthResponse>> GetDeviceHealthAsync(string deviceId)
         {
             try
             {
@@ -222,7 +222,7 @@ namespace DeviceOperations.Services.Device
 
                 if (string.IsNullOrWhiteSpace(deviceId))
                 {
-                    return ApiResponse<GetDeviceHealthResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
+                    return Task.FromResult(ApiResponse<GetDeviceHealthResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400));
                 }
 
                 var response = new GetDeviceHealthResponse
@@ -240,16 +240,16 @@ namespace DeviceOperations.Services.Device
                 };
 
                 _logger.LogInformation("Successfully retrieved health for device: {DeviceId}", deviceId);
-                return ApiResponse<GetDeviceHealthResponse>.CreateSuccess(response);
+                return Task.FromResult(ApiResponse<GetDeviceHealthResponse>.CreateSuccess(response));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting device health for: {DeviceId}", deviceId);
-                return ApiResponse<GetDeviceHealthResponse>.CreateError("GET_HEALTH_ERROR", "Failed to retrieve device health", 500);
+                return Task.FromResult(ApiResponse<GetDeviceHealthResponse>.CreateError("GET_HEALTH_ERROR", "Failed to retrieve device health", 500));
             }
         }
 
-        public async Task<ApiResponse<GetDeviceHealthResponse>> GetDeviceHealthAsync()
+        public Task<ApiResponse<GetDeviceHealthResponse>> GetDeviceHealthAsync()
         {
             try
             {
@@ -270,12 +270,12 @@ namespace DeviceOperations.Services.Device
                 };
 
                 _logger.LogInformation("Successfully retrieved health for all devices");
-                return ApiResponse<GetDeviceHealthResponse>.CreateSuccess(response);
+                return Task.FromResult(ApiResponse<GetDeviceHealthResponse>.CreateSuccess(response));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting health for all devices");
-                return ApiResponse<GetDeviceHealthResponse>.CreateError("GET_ALL_HEALTH_ERROR", "Failed to retrieve device health for all devices", 500);
+                return Task.FromResult(ApiResponse<GetDeviceHealthResponse>.CreateError("GET_ALL_HEALTH_ERROR", "Failed to retrieve device health for all devices", 500));
             }
         }
 
@@ -342,7 +342,7 @@ namespace DeviceOperations.Services.Device
             }
         }
 
-        public async Task<ApiResponse<bool>> PostDeviceAvailabilityAsync(string deviceId, bool isAvailable)
+        public Task<ApiResponse<bool>> PostDeviceAvailabilityAsync(string deviceId, bool isAvailable)
         {
             try
             {
@@ -350,7 +350,7 @@ namespace DeviceOperations.Services.Device
 
                 if (string.IsNullOrWhiteSpace(deviceId))
                 {
-                    return ApiResponse<bool>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
+                    return Task.FromResult(ApiResponse<bool>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400));
                 }
 
                 if (_deviceCache.TryGetValue(deviceId, out var deviceInfo))
@@ -361,12 +361,12 @@ namespace DeviceOperations.Services.Device
                 }
 
                 _logger.LogInformation("Successfully updated device availability: {DeviceId}", deviceId);
-                return ApiResponse<bool>.CreateSuccess(isAvailable);
+                return Task.FromResult(ApiResponse<bool>.CreateSuccess(isAvailable));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error setting device availability: {DeviceId}", deviceId);
-                return ApiResponse<bool>.CreateError("SET_AVAILABILITY_ERROR", "Failed to set device availability", 500);
+                return Task.FromResult(ApiResponse<bool>.CreateError("SET_AVAILABILITY_ERROR", "Failed to set device availability", 500));
             }
         }
 

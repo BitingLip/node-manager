@@ -55,6 +55,48 @@ namespace DeviceOperations.Models.Responses
     {
         public bool Success { get; set; }
         public long DefragmentedBytes { get; set; }
+        public Guid DeviceId { get; set; }
+        public float FragmentationReduced { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class GetMemoryUsageResponse
+    {
+        public Guid DeviceId { get; set; }
+        public Dictionary<string, object> UsageData { get; set; } = new();
+        public DateTime Timestamp { get; set; }
+    }
+
+    public class GetMemoryAllocationsResponse
+    {
+        public Guid DeviceId { get; set; }
+        public List<MemoryAllocation> Allocations { get; set; } = new();
+        public int TotalAllocations { get; set; }
+        public DateTime LastUpdated { get; set; }
+    }
+
+    public class GetMemoryAllocationResponse
+    {
+        public Guid AllocationId { get; set; }
+        public Guid DeviceId { get; set; }
+        public long AllocationSize { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public class DeleteMemoryAllocationResponse
+    {
+        public bool Success { get; set; }
+        public Guid AllocationId { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class GetMemoryTransferResponse
+    {
+        public Guid TransferId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public float Progress { get; set; }
+        public DateTime CompletedAt { get; set; }
     }
 
     // Model Response Models - with all properties controllers expect
@@ -446,40 +488,10 @@ namespace DeviceOperations.Models.Responses
         public string RecommendedDriverVersion { get; set; } = string.Empty;
     }
 
-    // Memory Response Models - missing from original
-    public class GetMemoryUsageResponse
-    {
-        public Dictionary<string, object> Usage { get; set; } = new();
-        public long TotalMemory { get; set; }
-        public long UsedMemory { get; set; }
-        public long FreeMemory { get; set; }
-    }
 
-    public class GetMemoryAllocationsResponse
-    {
-        public List<AllocationInfo> Allocations { get; set; } = new();
-        public int TotalAllocations { get; set; }
-        public long TotalAllocatedMemory { get; set; }
-    }
 
-    public class GetMemoryAllocationResponse
-    {
-        public AllocationInfo Allocation { get; set; } = new();
-        public Dictionary<string, object> AllocationDetails { get; set; } = new();
-    }
 
-    public class DeleteMemoryAllocationResponse
-    {
-        public bool Success { get; set; }
-        public string Message { get; set; } = string.Empty;
-        public long DeallocatedBytes { get; set; }
-    }
 
-    public class GetMemoryTransferResponse
-    {
-        public TransferInfo Transfer { get; set; } = new();
-        public Dictionary<string, object> TransferDetails { get; set; } = new();
-    }
 
     // Model Response Models - missing from original
     public class GetModelStatusResponse

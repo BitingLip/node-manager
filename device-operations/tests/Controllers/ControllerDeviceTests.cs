@@ -40,10 +40,10 @@ public class ControllerDeviceTests
             {
                 new DeviceInfo
                 {
-                    Id = Guid.NewGuid(),
+                    Id = Guid.NewGuid().ToString(),
                     Name = "NVIDIA RTX 4090",
-                    Type = "GPU",
-                    Status = "Available",
+                    Type = DeviceType.GPU,
+                    Status = DeviceOperations.Models.Common.DeviceStatus.Available,
                     IsAvailable = true
                 }
             },
@@ -51,7 +51,7 @@ public class ControllerDeviceTests
         };
 
         var serviceResponse = ApiResponse<ListDevicesResponse>.CreateSuccess(expectedResponse, "Success");
-        _mockServiceDevice.Setup(x => x.GetDeviceListAsync())
+        _mockServiceDevice.Setup(static x => x.GetDeviceListAsync())
             .ReturnsAsync(serviceResponse);
 
         // Act
@@ -67,7 +67,7 @@ public class ControllerDeviceTests
         apiResponse.Data.Should().NotBeNull();
         apiResponse.Data.Devices.Should().HaveCount(1);
 
-        _mockServiceDevice.Verify(x => x.GetDeviceListAsync(), Times.Once);
+        _mockServiceDevice.Verify(static x => x.GetDeviceListAsync(), Times.Once);
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public class ControllerDeviceTests
     {
         // Arrange
         var serviceResponse = ApiResponse<ListDevicesResponse>.CreateError("Service error", "Detailed error message");
-        _mockServiceDevice.Setup(x => x.GetDeviceListAsync())
+        _mockServiceDevice.Setup(static x => x.GetDeviceListAsync())
             .ReturnsAsync(serviceResponse);
 
         // Act
@@ -96,7 +96,7 @@ public class ControllerDeviceTests
     public async Task GetDevices_ShouldReturnInternalServerError_WhenExceptionThrown()
     {
         // Arrange
-        _mockServiceDevice.Setup(x => x.GetDeviceListAsync())
+        _mockServiceDevice.Setup(static x => x.GetDeviceListAsync())
             .ThrowsAsync(new Exception("Test exception"));
 
         // Act
@@ -109,10 +109,10 @@ public class ControllerDeviceTests
 
         // Verify logging occurred
         _mockLogger.Verify(
-            x => x.Log(
+            static x => x.Log(
                 LogLevel.Error,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Error retrieving device list")),
+                It.Is<It.IsAnyType>(static (v, t) => v.ToString().Contains("Error retrieving device list")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
@@ -226,7 +226,7 @@ public class ControllerDeviceTests
         };
 
         var serviceResponse = ApiResponse<GetDeviceStatusResponse>.CreateSuccess(expectedResponse, "Success");
-        _mockServiceDevice.Setup(x => x.GetDeviceStatusAsync(It.IsAny<string?>()))
+        _mockServiceDevice.Setup(static x => x.GetDeviceStatusAsync(It.IsAny<string?>()))
             .ReturnsAsync(serviceResponse);
 
         // Act
@@ -242,7 +242,7 @@ public class ControllerDeviceTests
         apiResponse.Data.Should().NotBeNull();
         apiResponse.Data.OverallStatus.Should().Be("Healthy");
 
-        _mockServiceDevice.Verify(x => x.GetDeviceStatusAsync(null), Times.Once);
+        _mockServiceDevice.Verify(static x => x.GetDeviceStatusAsync(null), Times.Once);
     }
 
     [Fact]

@@ -7,6 +7,8 @@ using DeviceOperations.Services.Model;
 using DeviceOperations.Services.Inference;
 using DeviceOperations.Services.Postprocessing;
 using DeviceOperations.Services.Processing;
+using DeviceOperations.Models.Common;
+using DeviceOperations.Models.Responses;
 
 namespace DeviceOperations.Tests.Helpers;
 

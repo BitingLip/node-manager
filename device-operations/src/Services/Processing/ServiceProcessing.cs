@@ -47,11 +47,21 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new GetProcessingWorkflowsResponse
                 {
-                    Workflows = allWorkflows,
-                    TotalWorkflows = allWorkflows.Count,
-                    Categories = categories,
-                    PopularWorkflows = popularWorkflows,
-                    LastUpdated = DateTime.UtcNow
+                    Workflows = allWorkflows.Select(w => new WorkflowInfo
+                    {
+                        Id = w.Id,
+                        Name = w.Name,
+                        Description = w.Description,
+                        Version = w.Version,
+                        EstimatedDuration = w.EstimatedDuration,
+                        Parameters = new List<WorkflowParameter>(),
+                        ResourceRequirements = new Dictionary<string, object>
+                        {
+                            ["memory"] = "4GB",
+                            ["gpu_memory"] = "6GB"
+                        }
+                    }).ToList(),
+                    TotalCount = allWorkflows.Count
                 };
 
                 _logger.LogInformation($"Retrieved {allWorkflows.Count} workflows across {categories.Count} categories");
@@ -98,12 +108,16 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new GetProcessingWorkflowResponse
                 {
-                    Workflow = workflow,
-                    IsAvailable = workflow.IsAvailable,
-                    ExecutionHistory = await GetWorkflowExecutionHistoryAsync(idWorkflow),
-                    PerformanceMetrics = await GetWorkflowPerformanceAsync(idWorkflow),
-                    RequiredResources = await CalculateRequiredResourcesAsync(workflow),
-                    LastAccessed = DateTime.UtcNow
+                    Workflow = new WorkflowInfo
+                    {
+                        Id = workflow.Id,
+                        Name = workflow.Name,
+                        Description = workflow.Description,
+                        Version = workflow.Version,
+                        EstimatedDuration = workflow.EstimatedDuration,
+                        Parameters = new List<WorkflowParameter>(),
+                        ResourceRequirements = await CalculateRequiredResourcesAsync(workflow)
+                    }
                 };
 
                 _logger.LogInformation($"Retrieved workflow details for: {idWorkflow}");
@@ -150,8 +164,7 @@ namespace DeviceOperations.Services.Processing
                     workflow_id = request.WorkflowId,
                     parameters = request.Parameters,
                     priority = request.Priority,
-                    device_preference = request.DevicePreference,
-                    resource_allocation = request.ResourceAllocation,
+                    background = request.Background,
                     action = "execute_workflow"
                 };
 
@@ -175,22 +188,10 @@ namespace DeviceOperations.Services.Processing
 
                     var response = new PostWorkflowExecuteResponse
                     {
-                        SessionId = sessionId,
-                        WorkflowId = request.WorkflowId,
-                        Status = ProcessingStatus.Running,
-                        StartedAt = DateTime.UtcNow,
-                        EstimatedCompletionTime = DateTime.UtcNow.AddSeconds(pythonResponse.estimated_time ?? 120),
-                        CurrentStep = 0,
-                        TotalSteps = workflow.Steps.Count,
-                        StepProgress = 0,
-                        QueuePosition = pythonResponse.queue_position ?? 0,
-                        AllocatedResources = pythonResponse.allocated_resources?.ToObject<Dictionary<string, object>>() ?? 
-                            new Dictionary<string, object>
-                            {
-                                ["memory"] = "4GB",
-                                ["gpu_memory"] = "6GB",
-                                ["cpu_cores"] = 4
-                            }
+                        ExecutionId = sessionId,
+                        Status = "Running",
+                        EstimatedCompletion = DateTime.UtcNow.AddSeconds(pythonResponse.estimated_time ?? 120),
+                        Progress = 0
                     };
 
                     workflow.UsageCount++;
@@ -229,14 +230,27 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new GetProcessingSessionsResponse
                 {
-                    Sessions = allSessions,
-                    TotalSessions = allSessions.Count,
-                    RunningSessions = runningSessions.Count,
-                    CompletedSessions = completedSessions.Count,
-                    FailedSessions = failedSessions.Count,
-                    QueuedSessions = allSessions.Count(s => s.Status == ProcessingStatus.Queued),
-                    AverageExecutionTime = CalculateAverageExecutionTime(completedSessions),
-                    LastUpdated = DateTime.UtcNow
+                    Sessions = allSessions.Select(s => new Models.Responses.ProcessingSession
+                    {
+                        Id = s.Id,
+                        Name = $"Session {s.Id[..8]}",
+                        Status = s.Status.ToString(),
+                        CreatedAt = s.StartedAt,
+                        UpdatedAt = s.LastUpdated,
+                        WorkflowId = s.WorkflowId,
+                        Configuration = new Dictionary<string, object>
+                        {
+                            ["current_step"] = s.CurrentStep,
+                            ["total_steps"] = s.TotalSteps,
+                            ["progress"] = s.Progress
+                        },
+                        ResourceUsage = new Dictionary<string, object>
+                        {
+                            ["memory_used"] = "4GB",
+                            ["cpu_usage"] = 0.65
+                        }
+                    }).ToList(),
+                    TotalCount = allSessions.Count
                 };
 
                 _logger.LogInformation($"Retrieved {allSessions.Count} processing sessions");
@@ -271,12 +285,25 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new GetProcessingSessionResponse
                 {
-                    Session = session,
-                    DetailedProgress = await GetDetailedProgressAsync(idSession),
-                    ExecutionLogs = await GetSessionExecutionLogsAsync(idSession),
-                    ResourceUsage = await GetSessionResourceUsageAsync(idSession),
-                    OutputPreview = await GetSessionOutputPreviewAsync(idSession),
-                    LastUpdated = DateTime.UtcNow
+                    Session = new Models.Responses.ProcessingSession
+                    {
+                        Id = session.Id,
+                        Name = $"Session {session.Id[..8]}",
+                        Status = session.Status.ToString(),
+                        CreatedAt = session.StartedAt,
+                        UpdatedAt = session.LastUpdated,
+                        WorkflowId = session.WorkflowId,
+                        Configuration = new Dictionary<string, object>
+                        {
+                            ["current_step"] = session.CurrentStep,
+                            ["total_steps"] = session.TotalSteps,
+                            ["progress"] = session.Progress,
+                            ["detailed_progress"] = await GetDetailedProgressAsync(idSession),
+                            ["execution_logs"] = await GetSessionExecutionLogsAsync(idSession),
+                            ["output_preview"] = await GetSessionOutputPreviewAsync(idSession)
+                        },
+                        ResourceUsage = await GetSessionResourceUsageAsync(idSession)
+                    }
                 };
 
                 _logger.LogInformation($"Retrieved session details for: {idSession}");
@@ -313,9 +340,8 @@ namespace DeviceOperations.Services.Processing
                 var pythonRequest = new
                 {
                     session_id = idSession,
-                    action = request.Action.ToString().ToLowerInvariant(),
-                    force = request.Force,
-                    preserve_output = request.PreserveOutput
+                    action = request.Action.ToLowerInvariant(),
+                    parameters = request.Parameters
                 };
 
                 var pythonResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
@@ -325,12 +351,12 @@ namespace DeviceOperations.Services.Processing
                 {
                     var previousStatus = session.Status;
 
-                    session.Status = request.Action switch
+                    session.Status = request.Action.ToLowerInvariant() switch
                     {
-                        SessionAction.Pause => ProcessingStatus.Paused,
-                        SessionAction.Resume => ProcessingStatus.Running,
-                        SessionAction.Cancel => ProcessingStatus.Cancelled,
-                        SessionAction.Restart => ProcessingStatus.Running,
+                        "pause" => ProcessingStatus.Paused,
+                        "resume" => ProcessingStatus.Running,
+                        "cancel" => ProcessingStatus.Cancelled,
+                        "restart" => ProcessingStatus.Running,
                         _ => session.Status
                     };
 
@@ -338,13 +364,9 @@ namespace DeviceOperations.Services.Processing
 
                     var response = new PostSessionControlResponse
                     {
-                        SessionId = idSession,
                         Action = request.Action,
-                        PreviousStatus = previousStatus,
-                        CurrentStatus = session.Status,
-                        ActionAppliedAt = DateTime.UtcNow,
-                        Success = true,
-                        Message = pythonResponse.message?.ToString() ?? $"Successfully applied {request.Action} action"
+                        Result = "Success",
+                        Status = session.Status.ToString()
                     };
 
                     _logger.LogInformation($"Successfully applied {request.Action} to session: {idSession}");
@@ -400,12 +422,8 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new DeleteProcessingSessionResponse
                 {
-                    SessionId = idSession,
-                    WasRunning = wasRunning,
-                    DeletedAt = DateTime.UtcNow,
-                    ResourcesReleased = pythonResponse?.resources_released ?? true,
-                    CleanupCompleted = pythonResponse?.cleanup_completed ?? true,
-                    FinalStatus = session.Status
+                    Success = true,
+                    Message = $"Session {idSession} deleted successfully"
                 };
 
                 // Remove from active sessions
@@ -437,14 +455,32 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new GetProcessingBatchesResponse
                 {
-                    Batches = allBatches,
-                    TotalBatches = allBatches.Count,
-                    RunningBatches = runningBatches.Count,
-                    CompletedBatches = completedBatches.Count,
-                    TotalItems = allBatches.Sum(b => b.TotalItems),
-                    ProcessedItems = allBatches.Sum(b => b.ProcessedItems),
-                    FailedItems = allBatches.Sum(b => b.FailedItems),
-                    LastUpdated = DateTime.UtcNow
+                    Batches = allBatches.Select(b => new BatchJob
+                    {
+                        Id = b.Id,
+                        Name = b.Name,
+                        Type = "ProcessingBatch",
+                        Status = b.Status.ToString(),
+                        CreatedAt = b.CreatedAt,
+                        StartedAt = b.StartedAt,
+                        CompletedAt = b.CompletedAt,
+                        TotalItems = b.TotalItems,
+                        CompletedItems = b.ProcessedItems,
+                        FailedItems = b.FailedItems,
+                        Progress = new BatchProgress
+                        {
+                            Percentage = b.TotalItems > 0 ? (double)b.ProcessedItems / b.TotalItems * 100 : 0,
+                            ItemsProcessed = b.ProcessedItems,
+                            TotalItems = b.TotalItems,
+                            ProcessingRate = 2.5 // Mock rate
+                        },
+                        Configuration = new Dictionary<string, object>
+                        {
+                            ["workflow_id"] = b.WorkflowId,
+                            ["priority"] = b.Priority
+                        }
+                    }).ToList(),
+                    TotalCount = allBatches.Count
                 };
 
                 _logger.LogInformation($"Retrieved {allBatches.Count} processing batches");
@@ -479,11 +515,31 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new GetProcessingBatchResponse
                 {
-                    Batch = batch,
-                    ItemDetails = await GetBatchItemDetailsAsync(idBatch),
-                    ExecutionMetrics = await GetBatchExecutionMetricsAsync(idBatch),
-                    ResourceUtilization = await GetBatchResourceUtilizationAsync(idBatch),
-                    LastUpdated = DateTime.UtcNow
+                    Batch = new BatchJob
+                    {
+                        Id = batch.Id,
+                        Name = batch.Name,
+                        Type = "ProcessingBatch",
+                        Status = batch.Status.ToString(),
+                        CreatedAt = batch.CreatedAt,
+                        StartedAt = batch.StartedAt,
+                        CompletedAt = batch.CompletedAt,
+                        TotalItems = batch.TotalItems,
+                        CompletedItems = batch.ProcessedItems,
+                        FailedItems = batch.FailedItems,
+                        Progress = new BatchProgress
+                        {
+                            Percentage = batch.TotalItems > 0 ? (double)batch.ProcessedItems / batch.TotalItems * 100 : 0,
+                            ItemsProcessed = batch.ProcessedItems,
+                            TotalItems = batch.TotalItems,
+                            ProcessingRate = 2.5 // Mock rate
+                        },
+                        Configuration = new Dictionary<string, object>
+                        {
+                            ["workflow_id"] = batch.WorkflowId,
+                            ["priority"] = batch.Priority
+                        }
+                    }
                 };
 
                 _logger.LogInformation($"Retrieved batch details for: {idBatch}");
@@ -497,26 +553,26 @@ namespace DeviceOperations.Services.Processing
             }
         }
 
-        public async Task<ApiResponse<PostBatchCreateResponse>> PostBatchCreateAsync(PostBatchCreateRequest request)
+        public Task<ApiResponse<PostBatchCreateResponse>> PostBatchCreateAsync(PostBatchCreateRequest request)
         {
             try
             {
                 _logger.LogInformation("Creating new processing batch");
 
                 if (request == null)
-                    return ApiResponse<PostBatchCreateResponse>.CreateError(
-                        new ErrorDetails { Message = "Batch creation request cannot be null" });
+                    return Task.FromResult(ApiResponse<PostBatchCreateResponse>.CreateError(
+                        new ErrorDetails { Message = "Batch creation request cannot be null" }));
 
                 if (request.Items?.Any() != true)
-                    return ApiResponse<PostBatchCreateResponse>.CreateError(
-                        new ErrorDetails { Message = "At least one batch item must be specified" });
+                    return Task.FromResult(ApiResponse<PostBatchCreateResponse>.CreateError(
+                        new ErrorDetails { Message = "At least one batch item must be specified" }));
 
                 var batchId = Guid.NewGuid().ToString();
                 var batch = new ProcessingBatch
                 {
                     Id = batchId,
                     Name = request.Name,
-                    WorkflowId = request.WorkflowId,
+                    WorkflowId = request.Type, // Use Type as WorkflowId since WorkflowId doesn't exist in request
                     TotalItems = request.Items.Count,
                     ProcessedItems = 0,
                     FailedItems = 0,
@@ -530,23 +586,18 @@ namespace DeviceOperations.Services.Processing
                 var response = new PostBatchCreateResponse
                 {
                     BatchId = batchId,
-                    Name = request.Name,
-                    WorkflowId = request.WorkflowId,
-                    TotalItems = request.Items.Count,
-                    Status = ProcessingStatus.Created,
-                    CreatedAt = DateTime.UtcNow,
-                    EstimatedDuration = TimeSpan.FromMinutes(request.Items.Count * 2), // 2 minutes per item estimate
-                    QueuePosition = _activeBatches.Count(b => b.Value.Status == ProcessingStatus.Queued)
+                    Status = ProcessingStatus.Created.ToString(),
+                    EstimatedDuration = TimeSpan.FromMinutes(request.Items.Count * 2) // 2 minutes per item estimate
                 };
 
                 _logger.LogInformation($"Created batch: {batchId} with {request.Items.Count} items");
-                return ApiResponse<PostBatchCreateResponse>.CreateSuccess(response);
+                return Task.FromResult(ApiResponse<PostBatchCreateResponse>.CreateSuccess(response));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to create processing batch");
-                return ApiResponse<PostBatchCreateResponse>.CreateError(
-                    new ErrorDetails { Message = $"Failed to create batch: {ex.Message}" });
+                return Task.FromResult(ApiResponse<PostBatchCreateResponse>.CreateError(
+                    new ErrorDetails { Message = $"Failed to create batch: {ex.Message}" }));
             }
         }
 
@@ -576,9 +627,8 @@ namespace DeviceOperations.Services.Processing
                 {
                     batch_id = idBatch,
                     workflow_id = batch.WorkflowId,
-                    execution_settings = request?.ExecutionSettings,
-                    max_concurrency = request?.MaxConcurrency ?? 2,
-                    priority = request?.Priority ?? batch.Priority,
+                    parameters = request?.Parameters,
+                    background = request?.Background ?? true,
                     action = "execute_batch"
                 };
 
@@ -593,22 +643,15 @@ namespace DeviceOperations.Services.Processing
 
                     var response = new PostBatchExecuteResponse
                     {
-                        BatchId = idBatch,
-                        Status = ProcessingStatus.Running,
-                        StartedAt = DateTime.UtcNow,
-                        EstimatedCompletionTime = DateTime.UtcNow.AddMinutes(batch.TotalItems * 2),
-                        TotalItems = batch.TotalItems,
-                        ProcessedItems = 0,
-                        FailedItems = 0,
-                        Progress = 0,
-                        ConcurrencyLevel = request?.MaxConcurrency ?? 2,
-                        AllocatedResources = pythonResponse.allocated_resources?.ToObject<Dictionary<string, object>>() ?? 
-                            new Dictionary<string, object>
-                            {
-                                ["worker_processes"] = 2,
-                                ["memory_per_worker"] = "2GB",
-                                ["total_memory"] = "4GB"
-                            }
+                        ExecutionId = idBatch,
+                        Status = ProcessingStatus.Running.ToString(),
+                        Progress = new BatchProgress
+                        {
+                            Percentage = 0,
+                            ItemsProcessed = 0,
+                            TotalItems = batch.TotalItems,
+                            ProcessingRate = 2.0 // Mock rate
+                        }
                     };
 
                     _logger.LogInformation($"Started batch execution: {idBatch}");
@@ -664,14 +707,8 @@ namespace DeviceOperations.Services.Processing
 
                 var response = new DeleteProcessingBatchResponse
                 {
-                    BatchId = idBatch,
-                    WasRunning = wasRunning,
-                    DeletedAt = DateTime.UtcNow,
-                    ItemsCompleted = batch.ProcessedItems,
-                    ItemsCancelled = batch.TotalItems - batch.ProcessedItems - batch.FailedItems,
-                    ItemsFailed = batch.FailedItems,
-                    ResourcesReleased = pythonResponse?.resources_released ?? true,
-                    CleanupCompleted = pythonResponse?.cleanup_completed ?? true
+                    Success = true,
+                    Message = $"Batch {idBatch} deleted successfully"
                 };
 
                 // Remove from active batches
@@ -846,7 +883,7 @@ namespace DeviceOperations.Services.Processing
 
                 if (pythonResponse?.success == true)
                 {
-                    if (Enum.TryParse<ProcessingStatus>(pythonResponse.status?.ToString(), true, out var status))
+                    if (Enum.TryParse<ProcessingStatus>(pythonResponse.status?.ToString(), true, out ProcessingStatus status))
                     {
                         session.Status = status;
                     }
@@ -854,7 +891,7 @@ namespace DeviceOperations.Services.Processing
                     session.CurrentStep = pythonResponse.current_step ?? session.CurrentStep;
                     session.Progress = pythonResponse.progress ?? session.Progress;
 
-                    if (status == ProcessingStatus.Completed && pythonResponse.completed_at != null)
+                    if (session.Status == ProcessingStatus.Completed && pythonResponse.completed_at != null)
                     {
                         session.CompletedAt = DateTime.Parse(pythonResponse.completed_at.ToString());
                     }
@@ -886,7 +923,7 @@ namespace DeviceOperations.Services.Processing
 
                 if (pythonResponse?.success == true)
                 {
-                    if (Enum.TryParse<ProcessingStatus>(pythonResponse.status?.ToString(), true, out var status))
+                    if (Enum.TryParse<ProcessingStatus>(pythonResponse.status?.ToString(), true, out ProcessingStatus status))
                     {
                         batch.Status = status;
                     }
@@ -894,7 +931,7 @@ namespace DeviceOperations.Services.Processing
                     batch.ProcessedItems = pythonResponse.processed_items ?? batch.ProcessedItems;
                     batch.FailedItems = pythonResponse.failed_items ?? batch.FailedItems;
 
-                    if (status == ProcessingStatus.Completed && pythonResponse.completed_at != null)
+                    if (batch.Status == ProcessingStatus.Completed && pythonResponse.completed_at != null)
                     {
                         batch.CompletedAt = DateTime.Parse(pythonResponse.completed_at.ToString());
                     }
@@ -948,7 +985,7 @@ namespace DeviceOperations.Services.Processing
 
             var totalMinutes = completedSessions
                 .Where(s => s.CompletedAt.HasValue)
-                .Average(s => (s.CompletedAt.Value - s.StartedAt).TotalMinutes);
+                .Average(s => (s.CompletedAt!.Value - s.StartedAt).TotalMinutes);
 
             return TimeSpan.FromMinutes(totalMinutes);
         }
