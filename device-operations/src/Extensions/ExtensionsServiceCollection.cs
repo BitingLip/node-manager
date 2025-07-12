@@ -6,6 +6,8 @@ using DeviceOperations.Services.Postprocessing;
 using DeviceOperations.Services.Processing;
 using DeviceOperations.Services.Environment;
 using DeviceOperations.Services.Python;
+using DeviceOperations.Services;
+using DeviceOperations.Models.Configuration;
 
 namespace DeviceOperations.Extensions;
 
@@ -22,8 +24,12 @@ public static class ExtensionsServiceCollection
     /// <returns>The service collection for chaining</returns>
     public static IServiceCollection RegisterApplicationServices(this IServiceCollection services, IConfiguration configuration)
     {
-        // Register Python worker communication service
+        // Register Python worker communication services
         services.AddSingleton<IPythonWorkerService, PythonWorkerService>();
+        services.AddSingleton<IOptimizedPythonWorkerService, OptimizedPythonWorkerService>();
+        
+        // Register field transformation service for inference
+        services.AddScoped<InferenceFieldTransformer>();
         
         // Register environment service
         services.AddScoped<IServiceEnvironment, ServiceEnvironment>();
@@ -40,6 +46,7 @@ public static class ExtensionsServiceCollection
         services.Configure<PythonWorkerConfiguration>(configuration.GetSection("PythonWorkers"));
         services.Configure<DeviceConfiguration>(configuration.GetSection("Devices"));
         services.Configure<ModelConfiguration>(configuration.GetSection("Models"));
+        services.Configure<InferenceServiceOptions>(configuration.GetSection(InferenceServiceOptions.ConfigurationKey));
 
         return services;
     }
