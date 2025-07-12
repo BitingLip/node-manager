@@ -218,7 +218,7 @@ namespace DeviceOperations.Services.Processing
                     session.Status = ProcessingStatus.Failed;
                     session.LastUpdated = DateTime.UtcNow;
                     return ApiResponse<ResponseModels.PostWorkflowExecuteResponse>.CreateError(
-                        new ErrorDetails { Message = executionResult.Error });
+                        new ErrorDetails { Message = executionResult.Error ?? "Unknown workflow execution error" });
                 }
 
                 // Update session status
@@ -1153,12 +1153,19 @@ namespace DeviceOperations.Services.Processing
                 var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                     PythonWorkerTypes.INFERENCE, "get_batch_status", statusRequest);
 
-                if (response?.success == true && response.data != null)
+                if ((response?.success == true) && (response?.data != null))
                 {
                     // Update batch with response data
-                    var status = ParseBatchStatus(response.data?.status?.ToString());
-                    var processedItems = ParseBatchProcessedItems(response.data?.processed_items);
-                    var failedItems = ParseBatchFailedItems(response.data?.failed_items);
+                    ProcessingStatus status = ProcessingStatus.Created;
+                    int processedItems = 0;
+                    int failedItems = 0;
+
+                    if (response?.data != null)
+                    {
+                        status = ParseBatchStatus(response.data?.status?.ToString());
+                        processedItems = ParseBatchProcessedItems(response.data?.processed_items);
+                        failedItems = ParseBatchFailedItems(response.data?.failed_items);
+                    }
 
                     batch.Status = status;
                     batch.ProcessedItems = processedItems;
@@ -1340,22 +1347,38 @@ namespace DeviceOperations.Services.Processing
                 var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                     workerType, "discover_workflows", discoveryRequest);
 
-                if (response?.success == true && response.data?.workflows != null)
+                if (response?.success == true && response?.data != null)
                 {
-                    try
+                    if (response?.data != null)
                     {
-                        foreach (var workflowData in response.data.workflows)
+                        if (response.data.workflows != null)
                         {
-                            if (workflowData != null)
+                            try
                             {
-                                var workflow = CreateWorkflowFromDomainData(workflowData, domain);
-                                workflows.Add(workflow);
+                                foreach (var workflowData in response.data.workflows)
+                                {
+                                    if (workflowData != null)
+                                    {
+                                        var workflow = CreateWorkflowFromDomainData(workflowData, domain);
+                                        workflows.Add(workflow);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Error parsing workflows from domain: {Domain}", domain);
                             }
                         }
+                        else
+                        {
+                            // Create default workflows for this domain
+                            workflows.AddRange(CreateDefaultWorkflowsForDomain(domain));
+                        }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        _logger.LogWarning(ex, "Error parsing workflows from domain: {Domain}", domain);
+                        // Create default workflows for this domain
+                        workflows.AddRange(CreateDefaultWorkflowsForDomain(domain));
                     }
                 }
                 else
@@ -1949,9 +1972,14 @@ namespace DeviceOperations.Services.Processing
                 var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                     PythonWorkerTypes.INFERENCE, "get_workflow_definition", request);
 
-                if (response?.success == true && response.data?.workflow != null)
+                if (response?.success == true && response?.data != null && response.data.workflow != null)
                 {
-                    return ParseWorkflowDefinition(response.data.workflow!);
+                    var workflow = response.data?.workflow;
+                    if (workflow == null)
+                    {
+                        throw new InvalidOperationException("Workflow data is null.");
+                    }
+                    return ParseWorkflowDefinition(workflow);
                 }
             }
             catch (Exception ex)
@@ -2343,7 +2371,7 @@ namespace DeviceOperations.Services.Processing
                     {
                         Domain = domain,
                         IsSuccess = response?.success == true,
-                        Error = response?.success == true ? null : response?.error?.ToString() ?? "Unknown error"
+                        Error = response?.success == true ? string.Empty : response?.error?.ToString() ?? "Unknown error"
                     });
                 }
                 catch (Exception ex)
@@ -2493,7 +2521,988 @@ namespace DeviceOperations.Services.Processing
 
         #endregion
 
+        #region Week 14: Session State Synchronization and Lifecycle Management
 
+        /// <summary>
+        /// Implement session progress tracking with multi-domain coordination - Week 14 Implementation
+        /// </summary>
+        private async Task<Dictionary<string, object>> GetDetailedSessionProgressAsync(string sessionId)
+        {
+            try
+            {
+                if (!_activeSessions.TryGetValue(sessionId, out var session))
+                {
+                    return new Dictionary<string, object> { ["error"] = "Session not found" };
+                }
+
+                var involvedDomains = GetSessionInvolvedDomains(session);
+                var domainStatuses = await AggregateSessionStatusFromDomains(sessionId, involvedDomains);
+
+                var progressDetails = new Dictionary<string, object>
+                {
+                    ["session_id"] = sessionId,
+                    ["overall_progress"] = CalculateOverallProgress(domainStatuses),
+                    ["current_step"] = session.CurrentStep,
+                    ["total_steps"] = session.TotalSteps,
+                    ["estimated_completion"] = EstimateSessionCompletion(session, domainStatuses) ?? DateTime.MinValue,
+                    ["domain_progress"] = domainStatuses.ToDictionary(
+                        d => d.Domain,
+                        d => new
+                        {
+                            progress = d.Progress,
+                            status = d.Status.ToString(),
+                            current_operation = d.CurrentOperation,
+                            last_updated = d.LastUpdated
+                        }
+                    ),
+                    ["resource_usage"] = await AggregateSessionResourceUsage(sessionId, involvedDomains),
+                    ["performance_metrics"] = GetSessionPerformanceMetrics(sessionId)
+                };
+
+                return progressDetails;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get detailed session progress: {SessionId}", sessionId);
+                return new Dictionary<string, object> { ["error"] = ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Implement session error handling and recovery - Week 14 Implementation
+        /// </summary>
+        private async Task<bool> AttemptSessionRecovery(string sessionId, string errorDomain, string errorDetails)
+        {
+            try
+            {
+                _logger.LogWarning("Attempting session recovery: {SessionId}, Error Domain: {ErrorDomain}", sessionId, errorDomain);
+
+                if (!_activeSessions.TryGetValue(sessionId, out var session))
+                {
+                    return false;
+                }
+
+                var involvedDomains = GetSessionInvolvedDomains(session);
+                
+                // Try to recover the failed domain
+                var recoveryResults = await SendControlToAllDomains(sessionId, new List<string> { errorDomain }, "recover", 
+                    new Dictionary<string, object> { ["error_details"] = errorDetails });
+
+                var recoverySuccessful = recoveryResults.All(r => r.IsSuccess);
+
+                if (recoverySuccessful)
+                {
+                    // Reset session status to running if recovery was successful
+                    session.Status = ProcessingStatus.Running;
+                    session.LastUpdated = DateTime.UtcNow;
+                    
+                    _logger.LogInformation("Session recovery successful: {SessionId}", sessionId);
+                    return true;
+                }
+                else
+                {
+                    // Mark session as failed if recovery failed
+                    session.Status = ProcessingStatus.Failed;
+                    session.LastUpdated = DateTime.UtcNow;
+                    
+                    _logger.LogError("Session recovery failed: {SessionId}", sessionId);
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception during session recovery: {SessionId}", sessionId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Implement session cleanup and resource deallocation - Week 14 Implementation
+        /// </summary>
+        private async Task<bool> CleanupSessionResources(string sessionId, bool wasRunning = false)
+        {
+            try
+            {
+                _logger.LogInformation("Cleaning up session resources: {SessionId}, Was Running: {WasRunning}", sessionId, wasRunning);
+
+                if (!_activeSessions.TryGetValue(sessionId, out var session))
+                {
+                    _logger.LogWarning("Session not found for cleanup: {SessionId}", sessionId);
+                    return false;
+                }
+
+                var involvedDomains = GetSessionInvolvedDomains(session);
+                
+                // Send cleanup commands to all involved domains
+                var cleanupResults = await SendCleanupToAllDomains(sessionId, involvedDomains, wasRunning);
+                
+                var allCleanupSuccessful = cleanupResults.All(r => r.IsSuccess);
+                
+                if (!allCleanupSuccessful)
+                {
+                    var failedDomains = cleanupResults.Where(r => !r.IsSuccess).Select(r => r.Domain);
+                    _logger.LogWarning("Cleanup failed for domains: {FailedDomains} in session: {SessionId}", 
+                        string.Join(", ", failedDomains), sessionId);
+                }
+
+                // Remove session from active sessions regardless of cleanup success
+                _activeSessions.TryRemove(sessionId, out _);
+                
+                _logger.LogInformation("Session cleanup completed: {SessionId}, All Successful: {AllSuccessful}", 
+                    sessionId, allCleanupSuccessful);
+                
+                return allCleanupSuccessful;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to cleanup session resources: {SessionId}", sessionId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Estimate session completion time based on current progress - Week 14 Implementation
+        /// </summary>
+        private DateTime? EstimateSessionCompletion(ProcessingSession session, List<DomainSessionStatus> domainStatuses)
+        {
+            try
+            {
+                if (session.Status == ProcessingStatus.Completed)
+                    return session.CompletedAt;
+
+                if (session.Status == ProcessingStatus.Failed || session.Status == ProcessingStatus.Cancelled)
+                    return null;
+
+                var overallProgress = CalculateOverallProgress(domainStatuses);
+                if (overallProgress <= 0)
+                    return null;
+
+                var elapsed = DateTime.UtcNow - session.StartedAt;
+                var estimatedTotal = TimeSpan.FromTicks((long)(elapsed.Ticks / (overallProgress / 100.0)));
+                var estimatedCompletion = session.StartedAt + estimatedTotal;
+
+                return estimatedCompletion;
+            }
+            catch
+            {
+                return null; // Return null if estimation fails
+            }
+        }
+
+        /// <summary>
+        /// Aggregate resource usage across all domains for a session - Week 14 Implementation
+        /// </summary>
+        private async Task<Dictionary<string, object>> AggregateSessionResourceUsage(string sessionId, List<string> involvedDomains)
+        {
+            var aggregatedUsage = new Dictionary<string, object>
+            {
+                ["memory_total_mb"] = 0,
+                ["vram_total_mb"] = 0,
+                ["cpu_usage_max"] = 0.0,
+                ["gpu_usage_max"] = 0.0,
+                ["processing_time_total_seconds"] = 0.0,
+                ["domain_breakdown"] = new Dictionary<string, object>()
+            };
+
+            try
+            {
+                foreach (var domain in involvedDomains)
+                {
+                    var resourceRequest = new
+                    {
+                        request_id = Guid.NewGuid().ToString(),
+                        session_id = sessionId,
+                        action = "get_resource_usage"
+                    };
+
+                    var workerType = domain.ToLowerInvariant() switch
+                    {
+                        "device" => PythonWorkerTypes.DEVICE,
+                        "model" => PythonWorkerTypes.MODEL,
+                        "inference" => PythonWorkerTypes.INFERENCE,
+                        "postprocessing" => PythonWorkerTypes.POSTPROCESSING,
+                        _ => PythonWorkerTypes.INFERENCE // Default fallback
+                    };
+
+                    try
+                    {
+                        var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                            workerType, "get_resource_usage", resourceRequest);
+
+                        if (response != null)
+                        {
+                            if (response.success == true && response.data != null)
+                            {
+                                var usage = response.data;
+                                var memoryMb = Convert.ToInt32(usage.memory_mb ?? 0);
+                                var vramMb = Convert.ToInt32(usage.vram_mb ?? 0);
+                                var cpuUsage = Convert.ToDouble(usage.cpu_usage ?? 0.0);
+                                var gpuUsage = Convert.ToDouble(usage.gpu_usage ?? 0.0);
+                                var processingTime = Convert.ToDouble(usage.processing_time_seconds ?? 0.0);
+
+                                aggregatedUsage["memory_total_mb"] = (int)aggregatedUsage["memory_total_mb"] + memoryMb;
+                                aggregatedUsage["vram_total_mb"] = (int)aggregatedUsage["vram_total_mb"] + vramMb;
+                                aggregatedUsage["cpu_usage_max"] = Math.Max((double)aggregatedUsage["cpu_usage_max"], cpuUsage);
+                                aggregatedUsage["gpu_usage_max"] = Math.Max((double)aggregatedUsage["gpu_usage_max"], gpuUsage);
+                                aggregatedUsage["processing_time_total_seconds"] = (double)aggregatedUsage["processing_time_total_seconds"] + processingTime;
+
+                                ((Dictionary<string, object>)aggregatedUsage["domain_breakdown"])[domain] = new
+                                {
+                                    memory_mb = memoryMb,
+                                    vram_mb = vramMb,
+                                    cpu_usage = cpuUsage,
+                                    gpu_usage = gpuUsage,
+                                    processing_time_seconds = processingTime
+                                };
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to get resource usage from domain: {Domain}", domain);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to aggregate session resource usage: {SessionId}", sessionId);
+            }
+
+            return aggregatedUsage;
+        }
+
+        /// <summary>
+        /// Get session performance metrics - Week 14 Implementation
+        /// </summary>
+        private Dictionary<string, object> GetSessionPerformanceMetrics(string sessionId)
+        {
+            try
+            {
+                if (!_activeSessions.TryGetValue(sessionId, out var session))
+                {
+                    return new Dictionary<string, object> { ["error"] = "Session not found" };
+                }
+
+                var elapsed = DateTime.UtcNow - session.StartedAt;
+                var stepsPerMinute = session.CurrentStep > 0 ? (session.CurrentStep / elapsed.TotalMinutes) : 0;
+                var estimatedTimeRemaining = session.Progress > 0 ? 
+                    TimeSpan.FromMinutes(((100 - session.Progress) / (double)session.Progress) * elapsed.TotalMinutes) : 
+                    TimeSpan.Zero;
+
+                return new Dictionary<string, object>
+                {
+                    ["elapsed_time_seconds"] = elapsed.TotalSeconds,
+                    ["steps_per_minute"] = Math.Round(stepsPerMinute, 2),
+                    ["estimated_time_remaining_seconds"] = estimatedTimeRemaining.TotalSeconds,
+                    ["efficiency_score"] = CalculateSessionEfficiency(session, elapsed),
+                    ["progress_velocity"] = session.Progress / elapsed.TotalMinutes,
+                    ["step_completion_rate"] = session.TotalSteps > 0 ? (double)session.CurrentStep / session.TotalSteps : 0
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get session performance metrics: {SessionId}", sessionId);
+                return new Dictionary<string, object> { ["error"] = ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Calculate session efficiency score - Week 14 Implementation
+        /// </summary>
+        private double CalculateSessionEfficiency(ProcessingSession session, TimeSpan elapsed)
+        {
+            try
+            {
+                // Base efficiency on progress vs time
+                var progressRate = session.Progress / elapsed.TotalMinutes;
+                var stepRate = session.CurrentStep / elapsed.TotalMinutes;
+                
+                // Normalize to 0-100 scale
+                var efficiency = Math.Min(100, (progressRate + stepRate) * 10);
+                return Math.Round(efficiency, 2);
+            }
+            catch
+            {
+                return 0.0;
+            }
+        }
+
+        #endregion
+
+        #region Week 15: Batch Processing Integration - Enhanced Python BatchManager Coordination
+
+        /// <summary>
+        /// Implement sophisticated batch queue management - Week 15 Implementation
+        /// </summary>
+        private async Task<Dictionary<string, object>> GetAdvancedBatchQueueStatusAsync()
+        {
+            try
+            {
+                var queueStatus = new Dictionary<string, object>();
+                var activeBatches = _activeBatches.Values.ToList();
+
+                // Get queue metrics from each domain
+                var domainQueues = new Dictionary<string, object>();
+                foreach (var domain in new[] { PythonWorkerTypes.DEVICE, PythonWorkerTypes.MODEL, 
+                                              PythonWorkerTypes.INFERENCE, PythonWorkerTypes.POSTPROCESSING })
+                {
+                    try
+                    {
+                        var queueRequest = new
+                        {
+                            request_id = Guid.NewGuid().ToString(),
+                            action = "get_batch_queue_status"
+                        };
+
+                        var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                            domain, "get_batch_queue_status", queueRequest);
+
+                        if (response?.success == true)
+                        {
+                            domainQueues[domain] = new
+                            {
+                                queue_length = response.data?.queue_length ?? 0,
+                                processing_capacity = response.data?.processing_capacity ?? 1,
+                                estimated_wait_time = response.data?.estimated_wait_time ?? 0,
+                                active_batches = response.data?.active_batches ?? 0
+                            };
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to get queue status from domain: {Domain}", domain);
+                        domainQueues[domain] = new { error = ex.Message };
+                    }
+                }
+
+                // Calculate overall queue metrics
+                queueStatus["total_batches"] = activeBatches.Count;
+                queueStatus["pending_batches"] = activeBatches.Count(b => b.Status == ProcessingStatus.Pending);
+                queueStatus["running_batches"] = activeBatches.Count(b => b.Status == ProcessingStatus.Running);
+                queueStatus["completed_batches"] = activeBatches.Count(b => b.Status == ProcessingStatus.Completed);
+                queueStatus["failed_batches"] = activeBatches.Count(b => b.Status == ProcessingStatus.Failed);
+                queueStatus["domain_queues"] = domainQueues;
+                queueStatus["estimated_total_wait_time"] = CalculateEstimatedWaitTime(activeBatches);
+                queueStatus["queue_efficiency"] = CalculateBatchQueueEfficiency(domainQueues);
+
+                return queueStatus;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get advanced batch queue status");
+                return new Dictionary<string, object> { ["error"] = ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Implement batch priority and scheduling coordination - Week 15 Implementation
+        /// </summary>
+        private async Task<bool> OptimizeBatchSchedulingAsync()
+        {
+            try
+            {
+                var pendingBatches = _activeBatches.Values
+                    .Where(b => b.Status == ProcessingStatus.Pending)
+                    .OrderBy(b => b.Priority)
+                    .ThenBy(b => b.CreatedAt)
+                    .ToList();
+
+                if (!pendingBatches.Any())
+                {
+                    return true; // Nothing to optimize
+                }
+
+                _logger.LogInformation("Optimizing batch scheduling for {BatchCount} pending batches", pendingBatches.Count);
+
+                // Get available capacity from each domain
+                var domainCapacities = await GetDomainProcessingCapacities();
+
+                // Redistribute batches based on capacity and priority
+                foreach (var batch in pendingBatches)
+                {
+                    var involvedDomains = GetBatchInvolvedDomains(batch);
+                    var bestDomain = SelectOptimalDomainForBatch(batch, involvedDomains, domainCapacities);
+
+                    if (!string.IsNullOrEmpty(bestDomain))
+                    {
+                        await AssignBatchToDomain(batch.Id, bestDomain);
+                    }
+                }
+
+                // Notify Python BatchManager of scheduling changes
+                await NotifyBatchManagerOfScheduleUpdates(pendingBatches);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to optimize batch scheduling");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Implement advanced batch progress monitoring - Week 15 Implementation
+        /// </summary>
+        private async Task<Dictionary<string, object>> GetBatchProgressAnalyticsAsync(string batchId)
+        {
+            try
+            {
+                if (!_activeBatches.TryGetValue(batchId, out var batch))
+                {
+                    return new Dictionary<string, object> { ["error"] = "Batch not found" };
+                }
+
+                var involvedDomains = GetBatchInvolvedDomains(batch);
+                var analytics = new Dictionary<string, object>();
+
+                // Collect progress data from each domain
+                var domainProgress = new Dictionary<string, object>();
+                foreach (var domain in involvedDomains)
+                {
+                    try
+                    {
+                        var progressRequest = new
+                        {
+                            request_id = Guid.NewGuid().ToString(),
+                            batch_id = batchId,
+                            action = "get_batch_progress_analytics"
+                        };
+
+                        var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                            domain, "get_batch_progress_analytics", progressRequest);
+
+                        if (response?.success == true)
+                        {
+                            domainProgress[domain] = new
+                            {
+                                items_processed = response.data?.items_processed ?? 0,
+                                items_failed = response.data?.items_failed ?? 0,
+                                processing_rate = response.data?.processing_rate ?? 0.0,
+                                estimated_completion = response.data?.estimated_completion,
+                                bottlenecks = response.data?.bottlenecks ?? new object[0],
+                                efficiency_score = response.data?.efficiency_score ?? 0.0
+                            };
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to get batch progress from domain: {Domain}", domain);
+                    }
+                }
+
+                // Calculate overall analytics
+                analytics["batch_id"] = batchId;
+                analytics["overall_progress"] = CalculateOverallBatchProgress(batch, domainProgress);
+                analytics["processing_efficiency"] = CalculateBatchProcessingEfficiency(domainProgress);
+                analytics["estimated_completion"] = EstimateBatchCompletion(batch, domainProgress) ?? DateTime.MinValue;
+                analytics["resource_utilization"] = await GetBatchResourceUtilization(batchId, involvedDomains);
+                analytics["domain_analytics"] = domainProgress;
+                analytics["performance_trends"] = CalculateBatchPerformanceTrends(batchId);
+                analytics["optimization_suggestions"] = GenerateBatchOptimizationSuggestions(batch, domainProgress);
+
+                return analytics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get batch progress analytics: {BatchId}", batchId);
+                return new Dictionary<string, object> { ["error"] = ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Implement batch resource optimization - Week 15 Implementation
+        /// </summary>
+        private async Task<bool> OptimizeBatchResourceAllocationAsync(string batchId)
+        {
+            try
+            {
+                if (!_activeBatches.TryGetValue(batchId, out var batch))
+                {
+                    return false;
+                }
+
+                _logger.LogInformation("Optimizing resource allocation for batch: {BatchId}", batchId);
+
+                var involvedDomains = GetBatchInvolvedDomains(batch);
+                var currentUtilization = await GetBatchResourceUtilization(batchId, involvedDomains);
+                
+                // Analyze resource bottlenecks
+                var optimizationPlan = await GenerateResourceOptimizationPlan(batchId, currentUtilization);
+
+                // Apply optimizations to each domain
+                var optimizationResults = new List<bool>();
+                foreach (var domain in involvedDomains)
+                {
+                    try
+                    {
+                        var optimizeRequest = new
+                        {
+                            request_id = Guid.NewGuid().ToString(),
+                            batch_id = batchId,
+                            action = "optimize_batch_resources",
+                            data = new
+                            {
+                                optimization_plan = optimizationPlan,
+                                target_efficiency = 0.85, // Target 85% efficiency
+                                resource_constraints = GetDomainResourceConstraints(domain)
+                            }
+                        };
+
+                        var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                            domain, "optimize_batch_resources", optimizeRequest);
+
+                        optimizationResults.Add(response?.success == true);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to optimize resources for domain: {Domain}", domain);
+                        optimizationResults.Add(false);
+                    }
+                }
+
+                var overallSuccess = optimizationResults.Any() && optimizationResults.All(r => r);
+                
+                if (overallSuccess)
+                {
+                    batch.LastUpdated = DateTime.UtcNow;
+                    _logger.LogInformation("Successfully optimized batch resources: {BatchId}", batchId);
+                }
+
+                return overallSuccess;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to optimize batch resource allocation: {BatchId}", batchId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Helper methods for Week 15 batch processing
+        /// </summary>
+        private TimeSpan CalculateEstimatedWaitTime(List<ProcessingBatch> batches)
+        {
+            var pendingBatches = batches.Where(b => b.Status == ProcessingStatus.Pending).ToList();
+            if (!pendingBatches.Any()) return TimeSpan.Zero;
+
+            // Simple estimation based on average processing time and queue position
+            var averageProcessingTime = TimeSpan.FromMinutes(5); // Default estimate
+            return TimeSpan.FromMinutes(pendingBatches.Count * averageProcessingTime.TotalMinutes);
+        }
+
+        private double CalculateBatchQueueEfficiency(Dictionary<string, object> domainQueues)
+        {
+            try
+            {
+                var totalCapacity = 0.0;
+                var totalUtilization = 0.0;
+
+                foreach (var queue in domainQueues.Values)
+                {
+                    if (queue is Dictionary<string, object> queueData)
+                    {
+                        var capacity = Convert.ToDouble(queueData.GetValueOrDefault("processing_capacity", 1));
+                        var activeBatches = Convert.ToDouble(queueData.GetValueOrDefault("active_batches", 0));
+                        
+                        totalCapacity += capacity;
+                        totalUtilization += Math.Min(activeBatches, capacity);
+                    }
+                }
+
+                return totalCapacity > 0 ? (totalUtilization / totalCapacity) * 100 : 0;
+            }
+            catch
+            {
+                return 0.0;
+            }
+        }
+
+        private async Task<Dictionary<string, object>> GetDomainProcessingCapacities()
+        {
+            var capacities = new Dictionary<string, object>();
+            
+            foreach (var domain in new[] { PythonWorkerTypes.DEVICE, PythonWorkerTypes.MODEL, 
+                                          PythonWorkerTypes.INFERENCE, PythonWorkerTypes.POSTPROCESSING })
+            {
+                try
+                {
+                    var capacityRequest = new
+                    {
+                        request_id = Guid.NewGuid().ToString(),
+                        action = "get_processing_capacity"
+                    };
+
+                    var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                        domain, "get_processing_capacity", capacityRequest);
+
+                    if (response?.success == true)
+                    {
+                        capacities[domain] = new
+                        {
+                            max_concurrent_batches = response.data?.max_concurrent_batches ?? 1,
+                            current_load = response.data?.current_load ?? 0,
+                            available_capacity = response.data?.available_capacity ?? 1
+                        };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to get capacity from domain: {Domain}", domain);
+                    capacities[domain] = new { max_concurrent_batches = 1, current_load = 0, available_capacity = 1 };
+                }
+            }
+
+            return capacities;
+        }
+
+        private string SelectOptimalDomainForBatch(ProcessingBatch batch, List<string> involvedDomains, Dictionary<string, object> capacities)
+        {
+            var bestDomain = string.Empty;
+            var bestScore = 0.0;
+
+            foreach (var domain in involvedDomains)
+            {
+                if (capacities.TryGetValue(domain, out var capacityData) && capacityData is Dictionary<string, object> capacity)
+                {
+                    var availableCapacity = Convert.ToDouble(capacity.GetValueOrDefault("available_capacity", 0));
+                    var currentLoad = Convert.ToDouble(capacity.GetValueOrDefault("current_load", 1));
+                    
+                    // Score based on available capacity and current load
+                    var score = availableCapacity / Math.Max(currentLoad, 1);
+                    
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestDomain = domain;
+                    }
+                }
+            }
+
+            return bestDomain;
+        }
+
+        private async Task<bool> AssignBatchToDomain(string batchId, string domain)
+        {
+            try
+            {
+                var assignRequest = new
+                {
+                    request_id = Guid.NewGuid().ToString(),
+                    batch_id = batchId,
+                    action = "assign_batch",
+                    data = new { target_domain = domain }
+                };
+
+                var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    domain, "assign_batch", assignRequest);
+
+                return response?.success == true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to assign batch to domain: {BatchId} -> {Domain}", batchId, domain);
+                return false;
+            }
+        }
+
+        private async Task NotifyBatchManagerOfScheduleUpdates(List<ProcessingBatch> batches)
+        {
+            try
+            {
+                var scheduleUpdate = new
+                {
+                    request_id = Guid.NewGuid().ToString(),
+                    action = "update_batch_schedule",
+                    data = new
+                    {
+                        updated_batches = batches.Select(b => new
+                        {
+                            batch_id = b.Id,
+                            priority = b.Priority,
+                            status = b.Status.ToString(),
+                            estimated_start = DateTime.UtcNow.AddMinutes(5) // Simple estimation
+                        }).ToArray()
+                    }
+                };
+
+                // Notify primary batch coordinator (inference domain)
+                await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.INFERENCE, "update_batch_schedule", scheduleUpdate);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to notify batch manager of schedule updates");
+            }
+        }
+
+        /// <summary>
+        /// Additional helper methods for Week 15 batch analytics
+        /// </summary>
+        private double CalculateOverallBatchProgress(ProcessingBatch batch, Dictionary<string, object> domainProgress)
+        {
+            try
+            {
+                if (!domainProgress.Any()) return batch.TotalItems > 0 ? (double)batch.ProcessedItems / batch.TotalItems * 100 : 0;
+
+                var totalProgress = 0.0;
+                var validDomains = 0;
+
+                foreach (var progress in domainProgress.Values)
+                {
+                    if (progress is Dictionary<string, object> progressData)
+                    {
+                        var itemsProcessed = Convert.ToInt32(progressData.GetValueOrDefault("items_processed", 0));
+                        var currentDomainProgress = batch.TotalItems > 0 ? (double)itemsProcessed / batch.TotalItems * 100 : 0;
+                        totalProgress += currentDomainProgress;
+                        validDomains++;
+                    }
+                }
+
+                return validDomains > 0 ? totalProgress / validDomains : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private double CalculateBatchProcessingEfficiency(Dictionary<string, object> domainProgress)
+        {
+            try
+            {
+                var totalEfficiency = 0.0;
+                var validDomains = 0;
+
+                foreach (var progress in domainProgress.Values)
+                {
+                    if (progress is Dictionary<string, object> progressData)
+                    {
+                        var efficiency = Convert.ToDouble(progressData.GetValueOrDefault("efficiency_score", 0));
+                        totalEfficiency += efficiency;
+                        validDomains++;
+                    }
+                }
+
+                return validDomains > 0 ? totalEfficiency / validDomains : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private DateTime? EstimateBatchCompletion(ProcessingBatch batch, Dictionary<string, object> domainProgress)
+        {
+            try
+            {
+                var estimatedCompletions = new List<DateTime>();
+
+                foreach (var progress in domainProgress.Values)
+                {
+                    if (progress is Dictionary<string, object> progressData)
+                    {
+                        var estimatedCompletion = progressData.GetValueOrDefault("estimated_completion");
+                        if (estimatedCompletion != null && DateTime.TryParse(estimatedCompletion.ToString(), out var completion))
+                        {
+                            estimatedCompletions.Add(completion);
+                        }
+                    }
+                }
+
+                // Return the latest estimated completion (bottleneck)
+                return estimatedCompletions.Any() ? estimatedCompletions.Max() : (DateTime?)null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private async Task<Dictionary<string, object>> GetBatchResourceUtilization(string batchId, List<string> involvedDomains)
+        {
+            var utilization = new Dictionary<string, object>();
+
+            foreach (var domain in involvedDomains)
+            {
+                try
+                {
+                    var utilizationRequest = new
+                    {
+                        request_id = Guid.NewGuid().ToString(),
+                        batch_id = batchId,
+                        action = "get_batch_resource_utilization"
+                    };
+
+                    var response = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                        domain, "get_batch_resource_utilization", utilizationRequest);
+
+                    if (response?.success == true)
+                    {
+                        utilization[domain] = new
+                        {
+                            memory_usage = response.data?.memory_usage ?? 0,
+                            gpu_usage = response.data?.gpu_usage ?? 0,
+                            cpu_usage = response.data?.cpu_usage ?? 0,
+                            io_usage = response.data?.io_usage ?? 0
+                        };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to get resource utilization from domain: {Domain}", domain);
+                }
+            }
+
+            return utilization;
+        }
+
+        private Dictionary<string, object> CalculateBatchPerformanceTrends(string batchId)
+        {
+            try
+            {
+                // Simple trend calculation - in a real implementation, this would analyze historical data
+                return new Dictionary<string, object>
+                {
+                    ["processing_rate_trend"] = "stable", // Could be "increasing", "decreasing", "stable"
+                    ["efficiency_trend"] = "improving",
+                    ["resource_usage_trend"] = "stable",
+                    ["error_rate_trend"] = "decreasing",
+                    ["trend_analysis_time"] = DateTime.UtcNow
+                };
+            }
+            catch
+            {
+                return new Dictionary<string, object>();
+            }
+        }
+
+        private List<string> GenerateBatchOptimizationSuggestions(ProcessingBatch batch, Dictionary<string, object> domainProgress)
+        {
+            var suggestions = new List<string>();
+
+            try
+            {
+                // Analyze performance and suggest optimizations
+                var avgEfficiency = CalculateBatchProcessingEfficiency(domainProgress);
+                
+                if (avgEfficiency < 70)
+                {
+                    suggestions.Add("Consider reducing batch size for better resource utilization");
+                    suggestions.Add("Check for bottlenecks in domain processing pipelines");
+                }
+
+                if (batch.FailedItems > batch.TotalItems * 0.1) // More than 10% failure rate
+                {
+                    suggestions.Add("High failure rate detected - review input data quality");
+                    suggestions.Add("Consider implementing retry logic for failed items");
+                }
+
+                if (batch.Priority > 5)
+                {
+                    suggestions.Add("High priority batch - consider allocating additional resources");
+                }
+
+                if (suggestions.Count == 0)
+                {
+                    suggestions.Add("Batch performance is optimal - no specific optimizations needed");
+                }
+            }
+            catch
+            {
+                suggestions.Add("Unable to generate optimization suggestions due to analysis error");
+            }
+
+            return suggestions;
+        }
+
+        private Task<Dictionary<string, object>> GenerateResourceOptimizationPlan(string batchId, Dictionary<string, object> currentUtilization)
+        {
+            try
+            {
+                var plan = new Dictionary<string, object>
+                {
+                    ["optimization_type"] = "resource_rebalancing",
+                    ["target_efficiency"] = 85.0,
+                    ["recommendations"] = new List<object>()
+                };
+
+                // Analyze current utilization and generate recommendations
+                foreach (var domain in currentUtilization.Keys)
+                {
+                    if (currentUtilization[domain] is Dictionary<string, object> domainUtil)
+                    {
+                        var memoryUsage = Convert.ToDouble(domainUtil.GetValueOrDefault("memory_usage", 0));
+                        var gpuUsage = Convert.ToDouble(domainUtil.GetValueOrDefault("gpu_usage", 0));
+
+                        var recommendations = new List<string>();
+
+                        if (memoryUsage > 80)
+                        {
+                            recommendations.Add("Reduce memory allocation or increase available memory");
+                        }
+                        if (gpuUsage > 90)
+                        {
+                            recommendations.Add("Consider GPU memory optimization or load balancing");
+                        }
+
+                        if (recommendations.Any())
+                        {
+                            ((List<object>)plan["recommendations"]).Add(new
+                            {
+                                domain = domain,
+                                actions = recommendations
+                            });
+                        }
+                    }
+                }
+
+                return Task.FromResult(plan);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate resource optimization plan: {BatchId}", batchId);
+                return Task.FromResult(new Dictionary<string, object> { ["error"] = ex.Message });
+            }
+        }
+
+        private Dictionary<string, object> GetDomainResourceConstraints(string domain)
+        {
+            // Return domain-specific resource constraints
+            return domain.ToLowerInvariant() switch
+            {
+                "device" => new Dictionary<string, object>
+                {
+                    ["max_memory_mb"] = 2048,
+                    ["max_concurrent_operations"] = 4
+                },
+                "model" => new Dictionary<string, object>
+                {
+                    ["max_memory_mb"] = 8192,
+                    ["max_models_loaded"] = 3
+                },
+                "inference" => new Dictionary<string, object>
+                {
+                    ["max_memory_mb"] = 16384,
+                    ["max_batch_size"] = 32,
+                    ["max_concurrent_batches"] = 2
+                },
+                "postprocessing" => new Dictionary<string, object>
+                {
+                    ["max_memory_mb"] = 4096,
+                    ["max_concurrent_operations"] = 8
+                },
+                _ => new Dictionary<string, object>
+                {
+                    ["max_memory_mb"] = 4096,
+                    ["max_concurrent_operations"] = 2
+                }
+            };
+        }
+
+        #endregion
+
+        #region Helper Methods for Processing Operations
 
         /// <summary>
         /// Helper methods for parsing Python responses
@@ -2581,6 +3590,8 @@ namespace DeviceOperations.Services.Processing
                 _logger.LogError(ex, "Error monitoring batch progress: {BatchId}", batchId);
             }
         }
+
+        #endregion
     }
 }
 
