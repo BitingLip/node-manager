@@ -94,6 +94,17 @@ public enum ModelPrecision
 }
 
 /// <summary>
+/// Session priority enumeration
+/// </summary>
+public enum SessionPriority
+{
+    Low = 0,
+    Normal = 1,
+    High = 2,
+    Critical = 3
+}
+
+/// <summary>
 /// Workload type enumeration
 /// </summary>
 public enum WorkloadType

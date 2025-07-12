@@ -1,6 +1,7 @@
 using DeviceOperations.Models.Common;
 using DeviceOperations.Models.Requests;
 using DeviceOperations.Models.Responses;
+using static DeviceOperations.Models.Requests.RequestsDevice;
 
 namespace DeviceOperations.Services.Device;
 
@@ -11,7 +12,7 @@ namespace DeviceOperations.Services.Device;
 public interface IServiceDevice
 {
     /// <summary>
-    /// Device Discovery & Enumeration
+    /// Device Discovery and Enumeration
     /// Enumerate all available CPU and GPU devices in the system
     /// </summary>
     /// <returns>List of all discovered devices</returns>
@@ -41,21 +42,6 @@ public interface IServiceDevice
     Task<ApiResponse<GetDeviceStatusResponse>> GetDeviceStatusAsync(string? deviceId = null);
 
     /// <summary>
-    /// Get device health metrics and performance indicators for all devices
-    /// Monitor device stability and performance trends
-    /// </summary>
-    /// <returns>Device health information for all devices</returns>
-    Task<ApiResponse<GetDeviceHealthResponse>> GetDeviceHealthAsync();
-
-    /// <summary>
-    /// Get device health metrics and performance indicators
-    /// Monitor device stability and performance trends
-    /// </summary>
-    /// <param name="deviceId">Device identifier</param>
-    /// <returns>Device health information</returns>
-    Task<ApiResponse<GetDeviceHealthResponse>> GetDeviceHealthAsync(string deviceId);
-
-    /// <summary>
     /// Perform device health check operation
     /// Run comprehensive health diagnostics
     /// </summary>
@@ -63,40 +49,6 @@ public interface IServiceDevice
     /// <param name="request">Health check parameters</param>
     /// <returns>Health check results</returns>
     Task<ApiResponse<PostDeviceHealthResponse>> PostDeviceHealthAsync(string deviceId, PostDeviceHealthRequest request);
-
-    /// <summary>
-    /// Control device power states for all devices
-    /// Handle power management operations
-    /// </summary>
-    /// <param name="request">Power control request</param>
-    /// <returns>Power operation result</returns>
-    Task<ApiResponse<PostDevicePowerResponse>> PostDevicePowerAsync(PostDevicePowerRequest request);
-
-    /// <summary>
-    /// Control device power states for specific device
-    /// Handle power management operations
-    /// </summary>
-    /// <param name="request">Power control request</param>
-    /// <param name="deviceId">Device identifier</param>
-    /// <returns>Power operation result</returns>
-    Task<ApiResponse<PostDevicePowerResponse>> PostDevicePowerAsync(PostDevicePowerRequest request, string deviceId);
-
-    /// <summary>
-    /// Reset all devices to default operational state
-    /// Reinitialize device drivers and connections
-    /// </summary>
-    /// <param name="request">Reset parameters</param>
-    /// <returns>Reset operation result</returns>
-    Task<ApiResponse<PostDeviceResetResponse>> PostDeviceResetAsync(PostDeviceResetRequest request);
-
-    /// <summary>
-    /// Reset specific device to default operational state
-    /// Reinitialize device drivers and connections
-    /// </summary>
-    /// <param name="request">Reset parameters</param>
-    /// <param name="deviceId">Device identifier</param>
-    /// <returns>Reset operation result</returns>
-    Task<ApiResponse<PostDeviceResetResponse>> PostDeviceResetAsync(PostDeviceResetRequest request, string deviceId);
 
     /// <summary>
     /// Run device benchmarks for performance testing
@@ -150,4 +102,20 @@ public interface IServiceDevice
     /// <param name="deviceId">Device identifier (optional)</param>
     /// <returns>Driver information</returns>
     Task<ApiResponse<DriverInfo>> GetDeviceDriversAsync(string? deviceId = null);
+
+    /// <summary>
+    /// Create or update a device set for coordinated operations
+    /// Configure multiple devices to work together as a set
+    /// </summary>
+    /// <param name="request">Device set configuration parameters</param>
+    /// <returns>Device set configuration result</returns>
+    Task<ApiResponse<SetDeviceSetResponse>> PostDeviceSetAsync(SetDeviceSetRequest request);
+
+    /// <summary>
+    /// Get device memory information and allocation status
+    /// Retrieve current memory usage and allocation information for a device
+    /// </summary>
+    /// <param name="deviceId">Device identifier</param>
+    /// <returns>Device memory information</returns>
+    Task<ApiResponse<GetDeviceMemoryResponse>> GetDeviceMemoryAsync(string deviceId);
 }

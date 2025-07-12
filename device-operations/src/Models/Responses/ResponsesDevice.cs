@@ -517,3 +517,70 @@ public class ConfigurationSchema
     /// </summary>
     public bool Required { get; set; }
 }
+
+/// <summary>
+/// Response for device set configuration
+/// </summary>
+public class SetDeviceSetResponse
+{
+    /// <summary>
+    /// Device set name/identifier
+    /// </summary>
+    public string DeviceSetName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// List of device IDs included in the set
+    /// </summary>
+    public List<string> DeviceIds { get; set; } = new();
+
+    /// <summary>
+    /// Aggregated capabilities of the device set
+    /// </summary>
+    public DeviceCapabilities AggregatedCapabilities { get; set; } = new();
+
+    /// <summary>
+    /// Configuration status
+    /// </summary>
+    public string ConfigurationStatus { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Timestamp when the set was configured
+    /// </summary>
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Response for device memory information
+/// </summary>
+public class GetDeviceMemoryResponse
+{
+    /// <summary>
+    /// Device identifier
+    /// </summary>
+    public string DeviceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Device name
+    /// </summary>
+    public string DeviceName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Device type
+    /// </summary>
+    public DeviceType DeviceType { get; set; }
+
+    /// <summary>
+    /// Memory allocation information
+    /// </summary>
+    public MemoryAllocationInfo MemoryInfo { get; set; } = new();
+
+    /// <summary>
+    /// Memory status description
+    /// </summary>
+    public string MemoryStatus { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Last updated timestamp
+    /// </summary>
+    public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
+}

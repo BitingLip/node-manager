@@ -472,6 +472,285 @@ public static class ResponsesMemory
         /// </summary>
         public DateTime AppliedAt { get; set; } = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// Response for getting model memory status with C#/Python coordination
+    /// </summary>
+    public class GetModelMemoryStatusResponse
+    {
+        /// <summary>
+        /// Overall system memory status from C# DirectML
+        /// </summary>
+        public MemoryInfo SystemMemoryInfo { get; set; } = new();
+
+        /// <summary>
+        /// Python model VRAM usage information
+        /// </summary>
+        public ModelVramUsage ModelVramUsage { get; set; } = new();
+
+        /// <summary>
+        /// Memory coordination status
+        /// </summary>
+        public MemoryCoordinationStatus CoordinationStatus { get; set; } = new();
+
+        /// <summary>
+        /// Available model operations based on memory state
+        /// </summary>
+        public List<string> AvailableOperations { get; set; } = new();
+
+        /// <summary>
+        /// Memory pressure level (0=low, 100=critical)
+        /// </summary>
+        public double PressureLevel { get; set; }
+
+        /// <summary>
+        /// Recommended memory optimization actions
+        /// </summary>
+        public List<string> OptimizationRecommendations { get; set; } = new();
+
+        /// <summary>
+        /// Last synchronization timestamp
+        /// </summary>
+        public DateTime LastSynchronized { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Response for triggering model memory optimization
+    /// </summary>
+    public class PostTriggerModelMemoryOptimizationResponse
+    {
+        /// <summary>
+        /// Whether optimization was triggered successfully
+        /// </summary>
+        public bool OptimizationTriggered { get; set; }
+
+        /// <summary>
+        /// Optimization strategy applied
+        /// </summary>
+        public string OptimizationStrategy { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Memory freed by optimization (in bytes)
+        /// </summary>
+        public long MemoryFreed { get; set; }
+
+        /// <summary>
+        /// Models unloaded during optimization
+        /// </summary>
+        public List<string> ModelsUnloaded { get; set; } = new();
+
+        /// <summary>
+        /// Performance impact of optimization
+        /// </summary>
+        public double PerformanceImpact { get; set; }
+
+        /// <summary>
+        /// Time taken for optimization (in milliseconds)
+        /// </summary>
+        public double OptimizationTimeMs { get; set; }
+
+        /// <summary>
+        /// Success message or error details
+        /// </summary>
+        public string Message { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Response for getting memory pressure information
+    /// </summary>
+    public class GetMemoryPressureResponse
+    {
+        /// <summary>
+        /// Device identifier (if device-specific)
+        /// </summary>
+        public string? DeviceId { get; set; }
+
+        /// <summary>
+        /// Current memory pressure level (0-100)
+        /// </summary>
+        public double PressureLevel { get; set; }
+
+        /// <summary>
+        /// Memory pressure category
+        /// </summary>
+        public MemoryPressureLevel PressureCategory { get; set; }
+
+        /// <summary>
+        /// Available memory (in bytes)
+        /// </summary>
+        public long AvailableMemory { get; set; }
+
+        /// <summary>
+        /// Total memory (in bytes)
+        /// </summary>
+        public long TotalMemory { get; set; }
+
+        /// <summary>
+        /// Memory utilization percentage
+        /// </summary>
+        public double UtilizationPercentage { get; set; }
+
+        /// <summary>
+        /// Critical memory thresholds
+        /// </summary>
+        public MemoryThresholds Thresholds { get; set; } = new();
+
+        /// <summary>
+        /// Recommended actions for current pressure level
+        /// </summary>
+        public List<string> RecommendedActions { get; set; } = new();
+
+        /// <summary>
+        /// Time until critical memory threshold (if applicable)
+        /// </summary>
+        public TimeSpan? TimeToCritical { get; set; }
+    }
+
+    /// <summary>
+    /// Model VRAM usage information from Python workers
+    /// </summary>
+    public class ModelVramUsage
+    {
+        /// <summary>
+        /// Total VRAM allocated for models (in bytes)
+        /// </summary>
+        public long TotalVramAllocated { get; set; }
+
+        /// <summary>
+        /// Available VRAM for new models (in bytes)
+        /// </summary>
+        public long AvailableVram { get; set; }
+
+        /// <summary>
+        /// Currently loaded models and their VRAM usage
+        /// </summary>
+        public List<ModelMemoryInfo> LoadedModels { get; set; } = new();
+
+        /// <summary>
+        /// VRAM fragmentation level (0-100)
+        /// </summary>
+        public double FragmentationLevel { get; set; }
+
+        /// <summary>
+        /// Last model loading/unloading operation timestamp
+        /// </summary>
+        public DateTime LastModelOperation { get; set; }
+    }
+
+    /// <summary>
+    /// Memory coordination status between C# and Python layers
+    /// </summary>
+    public class MemoryCoordinationStatus
+    {
+        /// <summary>
+        /// Whether C# and Python memory states are synchronized
+        /// </summary>
+        public bool IsSynchronized { get; set; }
+
+        /// <summary>
+        /// Last synchronization attempt timestamp
+        /// </summary>
+        public DateTime LastSyncAttempt { get; set; }
+
+        /// <summary>
+        /// Number of coordination conflicts detected
+        /// </summary>
+        public int ConflictCount { get; set; }
+
+        /// <summary>
+        /// Current coordination health status
+        /// </summary>
+        public string HealthStatus { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Pending coordination actions
+        /// </summary>
+        public List<string> PendingActions { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Model memory information
+    /// </summary>
+    public class ModelMemoryInfo
+    {
+        /// <summary>
+        /// Model identifier
+        /// </summary>
+        public string ModelId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Model name/path
+        /// </summary>
+        public string ModelName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// VRAM allocated for this model (in bytes)
+        /// </summary>
+        public long VramUsage { get; set; }
+
+        /// <summary>
+        /// Model loading timestamp
+        /// </summary>
+        public DateTime LoadedAt { get; set; }
+
+        /// <summary>
+        /// Last access timestamp
+        /// </summary>
+        public DateTime LastAccess { get; set; }
+
+        /// <summary>
+        /// Priority for memory optimization (higher = keep longer)
+        /// </summary>
+        public int Priority { get; set; }
+    }
+
+    /// <summary>
+    /// Memory pressure levels
+    /// </summary>
+    public enum MemoryPressureLevel
+    {
+        Low = 0,
+        Moderate = 1,
+        High = 2,
+        Critical = 3
+    }
+
+    /// <summary>
+    /// Memory pressure thresholds
+    /// </summary>
+    public class MemoryThresholds
+    {
+        /// <summary>
+        /// Warning threshold percentage (default: 75%)
+        /// </summary>
+        public double WarningThreshold { get; set; } = 75.0;
+
+        /// <summary>
+        /// Critical threshold percentage (default: 90%)
+        /// </summary>
+        public double CriticalThreshold { get; set; } = 90.0;
+
+        /// <summary>
+        /// Emergency threshold percentage (default: 95%)
+        /// </summary>
+        public double EmergencyThreshold { get; set; } = 95.0;
+    }
+
+    public static class GetMemoryAnalytics
+    {
+        public class Response
+        {
+            public Dictionary<string, object> Analytics { get; set; } = new Dictionary<string, object>();
+        }
+    }
+
+    public static class GetMemoryOptimization
+    {
+        public class Response
+        {
+            public Dictionary<string, object> Optimization { get; set; } = new Dictionary<string, object>();
+        }
+    }
 }
 
 /// <summary>
@@ -755,4 +1034,267 @@ public class MemoryLimitsImpact
     /// Recommendations for mitigating impact
     /// </summary>
     public List<string> Recommendations { get; set; } = new();
+}
+
+/// <summary>
+/// Response for getting model memory status with C#/Python coordination
+/// </summary>
+public class GetModelMemoryStatusResponse
+{
+    /// <summary>
+    /// Overall system memory status from C# DirectML
+    /// </summary>
+    public MemoryInfo SystemMemoryInfo { get; set; } = new();
+
+    /// <summary>
+    /// Python model VRAM usage information
+    /// </summary>
+    public ModelVramUsage ModelVramUsage { get; set; } = new();
+
+    /// <summary>
+    /// Memory coordination status
+    /// </summary>
+    public MemoryCoordinationStatus CoordinationStatus { get; set; } = new();
+
+    /// <summary>
+    /// Available model operations based on memory state
+    /// </summary>
+    public List<string> AvailableOperations { get; set; } = new();
+
+    /// <summary>
+    /// Memory pressure level (0=low, 100=critical)
+    /// </summary>
+    public double PressureLevel { get; set; }
+
+    /// <summary>
+    /// Recommended memory optimization actions
+    /// </summary>
+    public List<string> OptimizationRecommendations { get; set; } = new();
+
+    /// <summary>
+    /// Last synchronization timestamp
+    /// </summary>
+    public DateTime LastSynchronized { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Response for triggering model memory optimization
+/// </summary>
+public class PostTriggerModelMemoryOptimizationResponse
+{
+    /// <summary>
+    /// Whether optimization was triggered successfully
+    /// </summary>
+    public bool OptimizationTriggered { get; set; }
+
+    /// <summary>
+    /// Optimization strategy applied
+    /// </summary>
+    public string OptimizationStrategy { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Memory freed by optimization (in bytes)
+    /// </summary>
+    public long MemoryFreed { get; set; }
+
+    /// <summary>
+    /// Models unloaded during optimization
+    /// </summary>
+    public List<string> ModelsUnloaded { get; set; } = new();
+
+    /// <summary>
+    /// Performance impact of optimization
+    /// </summary>
+    public double PerformanceImpact { get; set; }
+
+    /// <summary>
+    /// Time taken for optimization (in milliseconds)
+    /// </summary>
+    public double OptimizationTimeMs { get; set; }
+
+    /// <summary>
+    /// Success message or error details
+    /// </summary>
+    public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Response for getting memory pressure information
+/// </summary>
+public class GetMemoryPressureResponse
+{
+    /// <summary>
+    /// Device identifier (if device-specific)
+    /// </summary>
+    public string? DeviceId { get; set; }
+
+    /// <summary>
+    /// Current memory pressure level (0-100)
+    /// </summary>
+    public double PressureLevel { get; set; }
+
+    /// <summary>
+    /// Memory pressure category
+    /// </summary>
+    public MemoryPressureLevel PressureCategory { get; set; }
+
+    /// <summary>
+    /// Available memory (in bytes)
+    /// </summary>
+    public long AvailableMemory { get; set; }
+
+    /// <summary>
+    /// Total memory (in bytes)
+    /// </summary>
+    public long TotalMemory { get; set; }
+
+    /// <summary>
+    /// Memory utilization percentage
+    /// </summary>
+    public double UtilizationPercentage { get; set; }
+
+    /// <summary>
+    /// Critical memory thresholds
+    /// </summary>
+    public MemoryThresholds Thresholds { get; set; } = new();
+
+    /// <summary>
+    /// Recommended actions for current pressure level
+    /// </summary>
+    public List<string> RecommendedActions { get; set; } = new();
+
+    /// <summary>
+    /// Time until critical memory threshold (if applicable)
+    /// </summary>
+    public TimeSpan? TimeToCritical { get; set; }
+}
+
+/// <summary>
+/// Model VRAM usage information from Python workers
+/// </summary>
+public class ModelVramUsage
+{
+    /// <summary>
+    /// Total VRAM allocated for models (in bytes)
+    /// </summary>
+    public long TotalVramAllocated { get; set; }
+
+    /// <summary>
+    /// Available VRAM for new models (in bytes)
+    /// </summary>
+    public long AvailableVram { get; set; }
+
+    /// <summary>
+    /// Currently loaded models and their VRAM usage
+    /// </summary>
+    public List<ModelMemoryInfo> LoadedModels { get; set; } = new();
+
+    /// <summary>
+    /// VRAM fragmentation level (0-100)
+    /// </summary>
+    public double FragmentationLevel { get; set; }
+
+    /// <summary>
+    /// Last model loading/unloading operation timestamp
+    /// </summary>
+    public DateTime LastModelOperation { get; set; }
+}
+
+/// <summary>
+/// Memory coordination status between C# and Python layers
+/// </summary>
+public class MemoryCoordinationStatus
+{
+    /// <summary>
+    /// Whether C# and Python memory states are synchronized
+    /// </summary>
+    public bool IsSynchronized { get; set; }
+
+    /// <summary>
+    /// Last synchronization attempt timestamp
+    /// </summary>
+    public DateTime LastSyncAttempt { get; set; }
+
+    /// <summary>
+    /// Number of coordination conflicts detected
+    /// </summary>
+    public int ConflictCount { get; set; }
+
+    /// <summary>
+    /// Current coordination health status
+    /// </summary>
+    public string HealthStatus { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Pending coordination actions
+    /// </summary>
+    public List<string> PendingActions { get; set; } = new();
+}
+
+/// <summary>
+/// Model memory information
+/// </summary>
+public class ModelMemoryInfo
+{
+    /// <summary>
+    /// Model identifier
+    /// </summary>
+    public string ModelId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Model name/path
+    /// </summary>
+    public string ModelName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// VRAM allocated for this model (in bytes)
+    /// </summary>
+    public long VramUsage { get; set; }
+
+    /// <summary>
+    /// Model loading timestamp
+    /// </summary>
+    public DateTime LoadedAt { get; set; }
+
+    /// <summary>
+    /// Last access timestamp
+    /// </summary>
+    public DateTime LastAccess { get; set; }
+
+    /// <summary>
+    /// Priority for memory optimization (higher = keep longer)
+    /// </summary>
+    public int Priority { get; set; }
+}
+
+/// <summary>
+/// Memory pressure levels
+/// </summary>
+public enum MemoryPressureLevel
+{
+    Low = 0,
+    Moderate = 1,
+    High = 2,
+    Critical = 3
+}
+
+/// <summary>
+/// Memory pressure thresholds
+/// </summary>
+public class MemoryThresholds
+{
+    /// <summary>
+    /// Warning threshold percentage (default: 75%)
+    /// </summary>
+    public double WarningThreshold { get; set; } = 75.0;
+
+    /// <summary>
+    /// Critical threshold percentage (default: 90%)
+    /// </summary>
+    public double CriticalThreshold { get; set; } = 90.0;
+
+    /// <summary>
+    /// Emergency threshold percentage (default: 95%)
+    /// </summary>
+    public double EmergencyThreshold { get; set; } = 95.0;
 }

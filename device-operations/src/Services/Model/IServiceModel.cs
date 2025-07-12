@@ -27,4 +27,8 @@ public interface IServiceModel
     Task<ApiResponse<PostModelSearchResponse>> PostModelSearchAsync(PostModelSearchRequest request);
     Task<ApiResponse<GetModelMetadataResponse>> GetModelMetadataAsync(string idModel);
     Task<ApiResponse<PutModelMetadataResponse>> PutModelMetadataAsync(string idModel, PutModelMetadataRequest request);
+    
+    // Week 9: Enhanced Filesystem Discovery Operations
+    Task<ApiResponse<GetAvailableModelsResponse>> GetAvailableModelsAsync();
+    Task<ApiResponse<GetAvailableModelsByTypeResponse>> GetAvailableModelsByTypeAsync(string modelType);
 }

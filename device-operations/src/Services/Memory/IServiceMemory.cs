@@ -28,5 +28,18 @@ public interface IServiceMemory
     Task<ApiResponse<PostMemoryClearResponse>> PostMemoryClearAsync(PostMemoryClearRequest request, string deviceId);
     Task<ApiResponse<PostMemoryOptimizeResponse>> PostMemoryOptimizeAsync(PostMemoryOptimizeRequest request);
     Task<ApiResponse<PostMemoryDefragmentResponse>> PostMemoryDefragmentAsync(PostMemoryDefragmentRequest request);
-    Task<ApiResponse<PostMemoryDefragmentResponse>> PostMemoryDefragmentAsync(PostMemoryDefragmentRequest request, string deviceId);
+    Task<ApiResponse<PostMemoryDefragmentResponse>> PostMemoryDefragmentAsync(PostMemoryDefragmentRequest request, string deviceId);    
+    // Week 7: Model Memory Coordination methods
+    Task<ApiResponse<ResponsesMemory.GetModelMemoryStatusResponse>> GetModelMemoryStatusAsync();
+    Task<ApiResponse<ResponsesMemory.PostTriggerModelMemoryOptimizationResponse>> TriggerModelMemoryOptimizationAsync(RequestsMemory.PostTriggerModelMemoryOptimizationRequest request);
+    Task<ApiResponse<ResponsesMemory.GetMemoryPressureResponse>> GetMemoryPressureAsync();
+    Task<ApiResponse<ResponsesMemory.GetMemoryPressureResponse>> GetMemoryPressureAsync(string deviceId);        /// <summary>
+        /// Week 8: Generate comprehensive memory analytics
+        /// </summary>
+        Task<ApiResponse<ResponsesMemory.GetMemoryAnalytics.Response>> GetMemoryAnalyticsAsync();
+
+        /// <summary>
+        /// Week 8: Generate memory optimization recommendations
+        /// </summary>
+        Task<ApiResponse<ResponsesMemory.GetMemoryOptimization.Response>> GetMemoryOptimizationAsync();
 }

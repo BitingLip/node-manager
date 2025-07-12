@@ -260,6 +260,37 @@ public static class RequestsDevice
         /// </summary>
         public bool ApplyImmediately { get; set; } = true;
     }
+
+    /// <summary>
+    /// Request to create or update a device set
+    /// </summary>
+    public class SetDeviceSetRequest
+    {
+        /// <summary>
+        /// Device set name/identifier
+        /// </summary>
+        public string DeviceSetName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// List of device IDs to include in the set
+        /// </summary>
+        public List<string> DeviceIds { get; set; } = new();
+
+        /// <summary>
+        /// Device set priority
+        /// </summary>
+        public string? Priority { get; set; }
+
+        /// <summary>
+        /// Device set description
+        /// </summary>
+        public string? Description { get; set; }
+
+        /// <summary>
+        /// Load balancing strategy for the device set
+        /// </summary>
+        public string? LoadBalancingStrategy { get; set; }
+    }
 }
 
 /// <summary>

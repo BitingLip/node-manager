@@ -382,17 +382,6 @@ public enum SessionStatus
 }
 
 /// <summary>
-/// Session priority enumeration
-/// </summary>
-public enum SessionPriority
-{
-    Low = 0,
-    Normal = 1,
-    High = 2,
-    Critical = 3
-}
-
-/// <summary>
 /// Result status enumeration
 /// </summary>
 public enum ResultStatus

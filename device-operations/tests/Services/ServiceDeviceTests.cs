@@ -120,104 +120,6 @@ public class ServiceDeviceTests
 
     #endregion
 
-    #region Device Health Tests
-
-    [Fact]
-    public async Task GetDeviceHealthAsync_ShouldReturnHealth_WhenSuccessful()
-    {
-        // Act
-        var result = await _serviceDevice.GetDeviceHealthAsync();
-
-        // Assert
-        result.Should().NotBeNull();
-        result.Success.Should().BeTrue();
-        result.Data.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task PostDeviceHealthAsync_ShouldReturnHealthCheckResults_WhenSuccessful()
-    {
-        // Arrange
-        var deviceId = Guid.NewGuid().ToString();
-        var request = new PostDeviceHealthRequest
-        {
-            HealthCheckType = "comprehensive",
-            IncludePerformanceMetrics = true
-        };
-
-        // Act
-        var result = await _serviceDevice.PostDeviceHealthAsync(deviceId, request);
-
-        // Assert
-        result.Should().NotBeNull();
-        // The service should handle the request gracefully, even if it returns an error
-    }
-
-    #endregion
-
-    #region Device Power Management Tests
-
-    [Fact]
-    public async Task PostDevicePowerAsync_ShouldHandlePowerActions_Gracefully()
-    {
-        // Arrange
-        var deviceId = Guid.NewGuid().ToString();
-        var request = new PostDevicePowerRequest
-        {
-            PowerAction = "suspend"
-        };
-
-        // Act
-        var result = await _serviceDevice.PostDevicePowerAsync(request, deviceId);
-
-        // Assert
-        result.Should().NotBeNull();
-        // The service should handle power management requests gracefully
-    }
-
-    [Fact]
-    public async Task PostDevicePowerAsync_ShouldValidateDeviceId()
-    {
-        // Arrange
-        var deviceId = Guid.Empty.ToString();
-        var request = new PostDevicePowerRequest
-        {
-            PowerAction = "restart"
-        };
-
-        // Act
-        var result = await _serviceDevice.PostDevicePowerAsync(request, deviceId);
-
-        // Assert
-        result.Should().NotBeNull();
-        // The service should handle empty device IDs gracefully
-    }
-
-    #endregion
-
-    #region Device Reset Tests
-
-    [Fact]
-    public async Task PostDeviceResetAsync_ShouldHandleResetRequests_Gracefully()
-    {
-        // Arrange
-        var deviceId = Guid.NewGuid().ToString();
-        var request = new PostDeviceResetRequest
-        {
-            ResetType = DeviceOperations.Models.Requests.DeviceResetType.Soft,
-            Force = false
-        };
-
-        // Act
-        var result = await _serviceDevice.PostDeviceResetAsync(request, deviceId);
-
-        // Assert
-        result.Should().NotBeNull();
-        // The service should handle reset requests gracefully
-    }
-
-    #endregion
-
     #region Device Benchmark Tests
 
     [Fact]
@@ -227,7 +129,7 @@ public class ServiceDeviceTests
         var deviceId = Guid.NewGuid().ToString();
         var request = new PostDeviceBenchmarkRequest
         {
-            BenchmarkType = DeviceOperations.Models.Requests.BenchmarkType.Compute,
+            BenchmarkType = DeviceOperations.Models.Common.BenchmarkType.Compute,
             DurationSeconds = 60
         };
 
@@ -250,7 +152,7 @@ public class ServiceDeviceTests
         var deviceId = Guid.NewGuid().ToString();
         var request = new PostDeviceOptimizeRequest
         {
-            Target = DeviceOperations.Models.Requests.OptimizationTarget.Performance,
+            Target = DeviceOperations.Models.Common.OptimizationTarget.Performance,
             AutoApply = false
         };
 
@@ -357,17 +259,17 @@ public class ServiceDeviceTests
     public async Task ServiceMethods_ShouldHandleExceptions_Gracefully()
     {
         // Test that service methods don't throw unhandled exceptions
-        var deviceId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid().ToString();
 
         // Act & Assert - None of these should throw exceptions
         var getListResult = await _serviceDevice.GetDeviceListAsync();
         getListResult.Should().NotBeNull();
 
-        var getStatusResult = await _serviceDevice.GetDeviceStatusAsync();
+        var getStatusResult = await _serviceDevice.GetDeviceStatusAsync(deviceId);
         getStatusResult.Should().NotBeNull();
 
-        var getHealthResult = await _serviceDevice.GetDeviceHealthAsync();
-        getHealthResult.Should().NotBeNull();
+        var getCapabilitiesResult = await _serviceDevice.GetDeviceCapabilitiesAsync(deviceId);
+        getCapabilitiesResult.Should().NotBeNull();
     }
 
     #endregion

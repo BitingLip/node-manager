@@ -302,6 +302,16 @@ public class DeviceSpecifications
     /// Clock speed in MHz
     /// </summary>
     public int ClockSpeedMHz { get; set; }
+
+    /// <summary>
+    /// Supported model types
+    /// </summary>
+    public List<ModelType> SupportedModelTypes { get; set; } = new();
+
+    /// <summary>
+    /// Supported precision modes
+    /// </summary>
+    public List<string> SupportedPrecisions { get; set; } = new();
 }
 
 /// <summary>

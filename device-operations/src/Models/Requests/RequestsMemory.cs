@@ -356,6 +356,73 @@ public static class RequestsMemory
         /// </summary>
         public bool ApplyImmediately { get; set; } = true;
     }
+
+    /// <summary>
+    /// Request to trigger model memory optimization
+    /// </summary>
+    public class PostTriggerModelMemoryOptimizationRequest
+    {
+        /// <summary>
+        /// Target memory pressure level to achieve (0-100)
+        /// </summary>
+        public double TargetPressureLevel { get; set; } = 50.0;
+
+        /// <summary>
+        /// Optimization strategy to apply
+        /// </summary>
+        public ModelOptimizationStrategy Strategy { get; set; } = ModelOptimizationStrategy.Balanced;
+
+        /// <summary>
+        /// Maximum number of models to unload (-1 for no limit)
+        /// </summary>
+        public int MaxModelsToUnload { get; set; } = -1;
+
+        /// <summary>
+        /// Minimum memory to free (in bytes)
+        /// </summary>
+        public long MinMemoryToFree { get; set; }
+
+        /// <summary>
+        /// Whether to force optimization even if pressure is low
+        /// </summary>
+        public bool ForceOptimization { get; set; } = false;
+
+        /// <summary>
+        /// Models to exclude from optimization (protect from unloading)
+        /// </summary>
+        public List<string> ExcludeModels { get; set; } = new();
+
+        /// <summary>
+        /// Maximum time to spend on optimization (in milliseconds)
+        /// </summary>
+        public int MaxOptimizationTimeMs { get; set; } = 30000; // 30 seconds
+    }
+
+    /// <summary>
+    /// Model optimization strategies
+    /// </summary>
+    public enum ModelOptimizationStrategy
+    {
+        /// <summary>
+        /// Conservative optimization, minimal impact
+        /// </summary>
+        Conservative = 0,
+
+        /// <summary>
+        /// Balanced optimization, moderate impact
+        /// </summary>
+        Balanced = 1,
+
+        /// <summary>
+        /// Aggressive optimization, maximum memory recovery
+        /// </summary>
+        Aggressive = 2,
+
+        /// <summary>
+        /// Smart optimization based on usage patterns
+        /// </summary>
+        Smart = 3
+    }
 }
 
 /// <summary>
@@ -416,7 +483,7 @@ public enum MemoryOptimizationType
 }
 
 /// <summary>
-/// Defragmentation strategy enumeration
+/// Defragmentation strategies
 /// </summary>
 public enum DefragmentationStrategy
 {

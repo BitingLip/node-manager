@@ -528,6 +528,8 @@ namespace DeviceOperations.Models.Responses
         public string CacheId { get; set; } = string.Empty;
         public TimeSpan CacheTime { get; set; }
         public long CachedSize { get; set; }
+        public List<string> CachedModels { get; set; } = new(); // List of successfully cached models
+        public CacheStatistics CacheStatistics { get; set; } = new(); // Performance monitoring
     }
 
     public class DeleteModelCacheResponse
@@ -645,6 +647,24 @@ namespace DeviceOperations.Models.Responses
         public Dictionary<string, object> Properties { get; set; } = new();
     }
 
+    /// <summary>
+    /// Cache performance statistics
+    /// </summary>
+    public class CacheStatistics
+    {
+        public int TotalCacheSize { get; set; }
+        public int UsedCacheSize { get; set; }
+        public int AvailableCacheSize { get; set; }
+        public int CachedModelsCount { get; set; }
+        public double HitRate { get; set; }
+        public double MissRate { get; set; }
+        public int TotalAccesses { get; set; }
+        public int Evictions { get; set; }
+        public double AverageAccessTime { get; set; }
+        public DateTime LastCleanup { get; set; }
+        public Dictionary<string, object> Metadata { get; set; } = new();
+    }
+
     // Request Models - missing from original
     public class PostDevicePowerRequest
     {
@@ -655,6 +675,7 @@ namespace DeviceOperations.Models.Responses
     public class PostModelCacheRequest
     {
         public string ModelId { get; set; } = string.Empty;
+        public List<string> ModelIds { get; set; } = new(); // Support for multiple models
         public List<string> Components { get; set; } = new();
         public Dictionary<string, object> CacheOptions { get; set; } = new();
     }
