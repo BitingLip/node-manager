@@ -265,4 +265,142 @@ namespace DeviceOperations.Models.Common
         public string Description { get; set; } = string.Empty;
         public Dictionary<string, object> Validation { get; set; } = new();
     }
+
+    #region Week 16: Integration Testing Models
+
+    /// <summary>
+    /// Test result for device discovery phase
+    /// </summary>
+    public class DeviceTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public List<string> TestedDevices { get; set; } = new();
+        public Dictionary<string, bool> DeviceCapabilities { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Test result for model loading phase
+    /// </summary>
+    public class ModelTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public List<string> LoadedModels { get; set; } = new();
+        public Dictionary<string, object> MemoryUsage { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Test result for inference execution phase
+    /// </summary>
+    public class InferenceTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public int InferenceCount { get; set; }
+        public double AverageInferenceTime { get; set; }
+        public Dictionary<string, object> QualityMetrics { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Test result for postprocessing phase
+    /// </summary>
+    public class PostprocessingTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public int ProcessedItems { get; set; }
+        public Dictionary<string, object> EnhancementResults { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Test result for cross-domain coordination
+    /// </summary>
+    public class CrossDomainCoordinationTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public Dictionary<string, bool> DomainCoordination { get; set; } = new();
+        public List<string> CoordinationEvents { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Test result for resource pressure monitoring
+    /// </summary>
+    public class MonitorResourcePressureResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public Dictionary<string, double> PeakResourceUsage { get; set; } = new();
+        public List<string> PressureEvents { get; set; } = new();
+        public bool ResourceLimitsRespected { get; set; }
+    }
+
+    /// <summary>
+    /// Session stress test result
+    /// </summary>
+    public class SessionStressTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public int ConcurrentSessions { get; set; }
+        public double SuccessRate { get; set; }
+        public TimeSpan AverageResponseTime { get; set; }
+    }
+
+    /// <summary>
+    /// Batch stress test result
+    /// </summary>
+    public class BatchStressTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public int ConcurrentBatches { get; set; }
+        public double ThroughputRate { get; set; }
+        public Dictionary<string, object> ResourceUtilization { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Performance test result
+    /// </summary>
+    public class PerformanceTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public double PerformanceScore { get; set; }
+        public Dictionary<string, double> Benchmarks { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Integration test result
+    /// </summary>
+    public class IntegrationTestResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public Dictionary<string, object> Metrics { get; set; } = new();
+        public List<string> TestedIntegrations { get; set; } = new();
+        public Dictionary<string, bool> IntegrationStatus { get; set; } = new();
+    }
+
+    #endregion
 }
