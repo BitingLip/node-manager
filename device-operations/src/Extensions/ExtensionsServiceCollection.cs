@@ -42,6 +42,10 @@ public static class ExtensionsServiceCollection
         services.AddScoped<IServicePostprocessing, ServicePostprocessing>();
         services.AddScoped<IServiceProcessing, ServiceProcessing>();
 
+        // Register field transformers and utilities
+        services.AddScoped<InferenceFieldTransformer>();
+        services.AddScoped<PostprocessingFieldTransformer>();
+
         // Configure application settings
         services.Configure<PythonWorkerConfiguration>(configuration.GetSection("PythonWorkers"));
         services.Configure<DeviceConfiguration>(configuration.GetSection("Devices"));

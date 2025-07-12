@@ -1,6 +1,8 @@
 using DeviceOperations.Models.Common;
 using DeviceOperations.Models.Requests;
 using DeviceOperations.Models.Responses;
+using DeviceOperations.Models.Postprocessing;
+using System.Runtime.CompilerServices;
 
 namespace DeviceOperations.Services.Postprocessing;
 
@@ -9,6 +11,7 @@ namespace DeviceOperations.Services.Postprocessing;
 /// </summary>
 public interface IServicePostprocessing
 {
+    // Core postprocessing operations
     Task<ApiResponse<GetPostprocessingCapabilitiesResponse>> GetPostprocessingCapabilitiesAsync();
     Task<ApiResponse<GetPostprocessingCapabilitiesResponse>> GetPostprocessingCapabilitiesAsync(string deviceId);
     Task<ApiResponse<PostPostprocessingApplyResponse>> PostPostprocessingApplyAsync(PostPostprocessingApplyRequest request);
@@ -27,4 +30,15 @@ public interface IServicePostprocessing
     Task<ApiResponse<PostPostprocessingColorCorrectResponse>> PostPostprocessingColorCorrectAsync(PostPostprocessingColorCorrectRequest request);
     Task<ApiResponse<PostPostprocessingColorCorrectResponse>> PostColorCorrectAsync(PostPostprocessingColorCorrectRequest request);
     Task<ApiResponse<PostPostprocessingBatchResponse>> PostPostprocessingBatchAsync(PostPostprocessingBatchRequest request);
+
+    // Advanced features (Weeks 18-19)
+    Task<ApiResponse<PostPostprocessingBatchAdvancedResponse>> ExecuteBatchPostprocessingAsync(PostPostprocessingBatchAdvancedRequest request);
+    Task<(double progress, DeviceOperations.Models.Postprocessing.BatchStatus status, List<BatchImageResult> results)> MonitorBatchProgressAsync(string batchId);
+    Task<ApiResponse<PostPostprocessingModelManagementResponse>> ManagePostprocessingModelAsync(PostPostprocessingModelManagementRequest request);
+    Task<PostprocessingPerformanceAnalytics> GetPerformanceAnalyticsAsync(PerformanceAnalyticsRequest request, CancellationToken cancellationToken = default);
+    
+    // Performance optimization features (Week 19)
+    Task<ApiResponse<PostPostprocessingResponse>> ExecuteWithOptimizedConnectionAsync(PostPostprocessingRequest request);
+    Task<ApiResponse<List<PostprocessingModelInfo>>> GetAvailableModelsWithCachingAsync(string? modelType = null, bool forceRefresh = false);
+    IAsyncEnumerable<PostprocessingProgressUpdate> ExecuteWithProgressStreamingAsync(PostPostprocessingRequest request, ProgressStreamingConfig? config = null, [EnumeratorCancellation] CancellationToken cancellationToken = default);
 }
