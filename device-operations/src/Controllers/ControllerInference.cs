@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using DeviceOperations.Models.Common;
 using DeviceOperations.Models.Requests;
 using DeviceOperations.Models.Responses;
+using DeviceOperations.Services.Inference;
 using CommonImageResolution = DeviceOperations.Models.Common.ImageResolution;
 
 namespace DeviceOperations.Controllers
@@ -17,10 +18,12 @@ namespace DeviceOperations.Controllers
     public class ControllerInference : ControllerBase
     {
         private readonly ILogger<ControllerInference> _logger;
+        private readonly IServiceInference _serviceInference;
 
-        public ControllerInference(ILogger<ControllerInference> logger)
+        public ControllerInference(ILogger<ControllerInference> logger, IServiceInference serviceInference)
         {
             _logger = logger;
+            _serviceInference = serviceInference;
         }
 
         #region Core Inference Operations
@@ -40,63 +43,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving system inference capabilities");
 
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.GetInferenceCapabilitiesAsync();
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new GetInferenceCapabilitiesResponse
+                var result = await _serviceInference.GetInferenceCapabilitiesAsync();
+                
+                if (result.IsSuccess)
                 {
-                    SupportedInferenceTypes = new List<string>
-                    {
-                        "TextToImage",
-                        "ImageToImage", 
-                        "Inpainting",
-                        "Outpainting",
-                        "ControlNet",
-                        "DepthToImage",
-                        "ImageVariation"
-                    },
-                    SupportedModels = new List<ModelInfo>
-                    {
-                        new ModelInfo
-                        {
-                            Id = Guid.NewGuid().ToString(),
-                            Name = "FLUX.1 Dev",
-                            Type = ModelType.Flux,
-                            Version = "dev",
-                            Status = ModelStatus.Available,
-                            FileSize = 23625000000,
-                            LastUpdated = DateTime.UtcNow.AddDays(-15)
-                        }
-                    },
-                    AvailableDevices = new List<DeviceInfo>
-                    {
-                        new DeviceInfo
-                        {
-                            Id = Guid.NewGuid().ToString(),
-                            Name = "NVIDIA RTX 4090",
-                            Type = DeviceType.GPU,
-                            Status = DeviceStatus.Available,
-                            IsAvailable = true,
-                            DriverVersion = "531.79",
-                            CreatedAt = DateTime.UtcNow.AddHours(-24),
-                            UpdatedAt = DateTime.UtcNow
-                        }
-                    },
-                    MaxConcurrentInferences = 4,
-                    SupportedPrecisions = new List<string> { "FP32", "FP16", "INT8" },
-                    MaxBatchSize = 8,
-                    MaxResolution = new CommonImageResolution { Width = 2048, Height = 2048 }
-                };
-
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                return Ok(new ApiResponse<GetInferenceCapabilitiesResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Inference capabilities retrieved successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -132,51 +86,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving inference capabilities for device {DeviceId}", idDevice);
 
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.GetInferenceCapabilitiesAsync(idDevice);
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new GetInferenceCapabilitiesDeviceResponse
+                var result = await _serviceInference.GetInferenceCapabilitiesAsync(idDevice.ToString());
+                
+                if (result.IsSuccess)
                 {
-                    DeviceId = idDevice,
-                    DeviceName = "NVIDIA RTX 4090",
-                    SupportedInferenceTypes = new List<string>
-                    {
-                        "TextToImage",
-                        "ImageToImage",
-                        "Inpainting",
-                        "ControlNet",
-                        "DepthToImage"
-                    },
-                    LoadedModels = new List<ModelInfo>
-                    {
-                        new ModelInfo
-                        {
-                            Id = Guid.NewGuid().ToString(),
-                            Name = "FLUX.1 Dev",
-                            Type = ModelType.Flux,
-                            Version = "dev",
-                            Status = ModelStatus.Available,
-                            FileSize = 23625000000
-                        }
-                    },
-                    MaxConcurrentInferences = 2,
-                    SupportedPrecisions = new List<string> { "FP32", "FP16" },
-                    MaxBatchSize = 4,
-                    MaxResolution = new CommonImageResolution { Width = 2048, Height = 2048 },
-                    MemoryAvailable = 22548578304, // ~21GB available
-                    ComputeCapability = "8.9",
-                    OptimalInferenceTypes = new List<string> { "TextToImage", "ImageToImage" }
-                };
-
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                return Ok(new ApiResponse<GetInferenceCapabilitiesDeviceResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Device inference capabilities retrieved successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -212,50 +129,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Executing {InferenceType} inference with model {ModelId}", request.InferenceType, request.ModelId);
 
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.PostInferenceExecuteAsync(request);
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new PostInferenceExecuteResponse
+                var result = await _serviceInference.PostInferenceExecuteAsync(request);
+                
+                if (result.IsSuccess)
                 {
-                    InferenceId = Guid.NewGuid(),
-                    ModelId = request.ModelId,
-                    DeviceId = Guid.NewGuid().ToString(),
-                    InferenceType = request.InferenceType,
-                    Status = InferenceStatus.Completed,
-                    ExecutionTime = TimeSpan.FromSeconds(4.2),
-                    CompletedAt = DateTime.UtcNow,
-                    Results = new Dictionary<string, object>
-                    {
-                        { "GeneratedImages", new[] { "/outputs/generated_image_001.png" } },
-                        { "Seed", 42 },
-                        { "Steps", 20 },
-                        { "CFGScale", 7.5 },
-                        { "Resolution", "1024x1024" }
-                    },
-                    Performance = new Dictionary<string, object>
-                    {
-                        { "StepsPerSecond", 4.76 },
-                        { "MemoryUsed", "18.2GB" },
-                        { "PowerUsage", "385W" },
-                        { "Temperature", "76°C" }
-                    },
-                    QualityMetrics = new Dictionary<string, object>
-                    {
-                        { "AestheticScore", 7.8f },
-                        { "TechnicalQuality", 8.5f },
-                        { "PromptAdherence", 9.2f }
-                    }
-                };
-
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                return Ok(new ApiResponse<PostInferenceExecuteResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Inference executed successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -297,57 +178,14 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Executing {InferenceType} inference on device {DeviceId} with model {ModelId}", 
                     request.InferenceType, idDevice, request.ModelId);
 
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.PostInferenceExecuteAsync(request, idDevice);
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new PostInferenceExecuteDeviceResponse
+                var result = await _serviceInference.PostInferenceExecuteAsync(request, idDevice.ToString());
+                
+                if (result.IsSuccess)
                 {
-                    InferenceId = Guid.NewGuid(),
-                    ModelId = request.ModelId,
-                    DeviceId = idDevice.ToString(),
-                    InferenceType = request.InferenceType,
-                    Status = InferenceStatus.Completed,
-                    ExecutionTime = TimeSpan.FromSeconds(3.8),
-                    CompletedAt = DateTime.UtcNow,
-                    Results = new Dictionary<string, object>
-                    {
-                        { "GeneratedImages", new[] { "/outputs/generated_image_002.png" } },
-                        { "Seed", 42 },
-                        { "Steps", 20 },
-                        { "CFGScale", 7.5 },
-                        { "Resolution", "1024x1024" }
-                    },
-                    DevicePerformance = new Dictionary<string, object>
-                    {
-                        { "StepsPerSecond", 5.26 },
-                        { "MemoryUsed", "18.2GB" },
-                        { "PowerUsage", "385W" },
-                        { "Temperature", "76°C" },
-                        { "Utilization", "92%" }
-                    },
-                    QualityMetrics = new Dictionary<string, object>
-                    {
-                        { "AestheticScore", 7.8f },
-                        { "TechnicalQuality", 8.5f },
-                        { "PromptAdherence", 9.2f }
-                    },
-                    OptimizationsApplied = new List<string>
-                    {
-                        "Mixed precision (FP16)",
-                        "Memory optimization",
-                        "Compute graph fusion"
-                    }
-                };
-
-                return Ok(new ApiResponse<PostInferenceExecuteDeviceResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Inference executed successfully on specified device"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -387,52 +225,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Validating {InferenceType} inference request", request.InferenceType);
 
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.PostInferenceValidateAsync(request);
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new PostInferenceValidateResponse
+                var result = await _serviceInference.PostInferenceValidateAsync(request);
+                
+                if (result.IsSuccess)
                 {
-                    IsValid = true,
-                    ValidationTime = TimeSpan.FromMilliseconds(45),
-                    ValidatedAt = DateTime.UtcNow,
-                    ValidationResults = new Dictionary<string, object>
-                    {
-                        { "ModelCompatibility", true },
-                        { "ParameterValidity", true },
-                        { "ResourceAvailability", true },
-                        { "InferenceTypeSupported", true },
-                        { "DeviceCompatibility", true }
-                    },
-                    Issues = new List<string>(),
-                    Warnings = new List<string>
-                    {
-                        "High step count may result in longer execution time"
-                    },
-                    Recommendations = new List<string>
-                    {
-                        "Consider using FP16 precision for better performance",
-                        "Batch size of 4 would be optimal for this model"
-                    },
-                    EstimatedExecutionTime = TimeSpan.FromSeconds(4.2),
-                    EstimatedMemoryUsage = 19327352832, // ~18GB
-                    OptimalDevice = Guid.NewGuid().ToString(),
-                    SuggestedOptimizations = new List<string>
-                    {
-                        "Mixed precision",
-                        "Memory optimization",
-                        "Compute graph fusion"
-                    }
-                };
-
-                return Ok(new ApiResponse<PostInferenceValidateResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Inference request validated successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -465,31 +265,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving supported inference types");
 
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.GetSupportedTypesAsync();
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new GetSupportedTypesResponse
+                var result = await _serviceInference.GetSupportedTypesAsync();
+                
+                if (result.IsSuccess)
                 {
-                    SupportedTypes = new List<string>
-                    {
-                        "TextToImage",
-                        "ImageToImage", 
-                        "Inpainting",
-                        "ControlNet"
-                    },
-                    TotalTypes = 4,
-                    LastUpdated = DateTime.UtcNow
-                };
-
-                return Ok(new ApiResponse<GetSupportedTypesResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Supported inference types retrieved successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -525,33 +308,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving supported inference types for device {DeviceId}", idDevice);
 
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.GetSupportedTypesAsync(idDevice);
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new GetSupportedTypesDeviceResponse
+                var result = await _serviceInference.GetSupportedTypesAsync(idDevice.ToString());
+                
+                if (result.IsSuccess)
                 {
-                    DeviceId = idDevice.ToString(),
-                    DeviceName = "NVIDIA RTX 4090",
-                    SupportedTypes = new List<string>
-                    {
-                        "TextToImage",
-                        "ImageToImage"
-                    },
-                    LoadedModels = new List<string> { "FLUX.1 Dev" },
-                    TotalTypes = 2,
-                    DeviceCapability = "High",
-                    LastUpdated = DateTime.UtcNow
-                };
-
-                return Ok(new ApiResponse<GetSupportedTypesDeviceResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Device-specific supported inference types retrieved successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -588,31 +352,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving all active inference sessions");
 
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.GetInferenceSessionsAsync();
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new GetInferenceSessionsResponse
+                var result = await _serviceInference.GetInferenceSessionsAsync();
+                
+                if (result.IsSuccess)
                 {
-                    Sessions = new List<SessionInfo>
-                    {
-                        new SessionInfo
-                        {
-                            SessionId = Guid.NewGuid(),
-                            Status = "Running",
-                            StartedAt = DateTime.UtcNow.AddMinutes(-5)
-                        }
-                    }
-                };
-
-                return Ok(new ApiResponse<GetInferenceSessionsResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Inference sessions retrieved successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -648,28 +395,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Retrieving inference session {SessionId}", idSession);
 
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.GetInferenceSessionAsync(idSession);
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new GetInferenceSessionResponse
+                var result = await _serviceInference.GetInferenceSessionAsync(idSession.ToString());
+                
+                if (result.IsSuccess)
                 {
-                    Session = new SessionInfo
-                    {
-                        SessionId = idSession,
-                        Status = "Running",
-                        StartedAt = DateTime.UtcNow.AddMinutes(-5)
-                    }
-                };
-
-                return Ok(new ApiResponse<GetInferenceSessionResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Inference session retrieved successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -708,24 +441,14 @@ namespace DeviceOperations.Controllers
             {
                 _logger.LogInformation("Cancelling inference session {SessionId}", idSession);
 
-                await Task.Delay(1); // Add await to satisfy async requirement
-
-                // TODO: Replace with actual service call when Phase 4 is implemented
-                // var result = await _serviceInference.DeleteInferenceSessionAsync(idSession, request);
-
-                // Temporary mock response for Phase 3
-                var mockResponse = new DeleteInferenceSessionResponse
+                var result = await _serviceInference.DeleteInferenceSessionAsync(idSession.ToString(), request);
+                
+                if (result.IsSuccess)
                 {
-                    Success = true,
-                    Message = $"Inference session {idSession} cancelled successfully"
-                };
-
-                return Ok(new ApiResponse<DeleteInferenceSessionResponse>
-                {
-                    Success = true,
-                    Data = mockResponse,
-                    Message = "Inference session cancelled successfully"
-                });
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {

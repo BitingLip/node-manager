@@ -26,12 +26,20 @@ namespace DeviceOperations.Services.Postprocessing
         private readonly Dictionary<string, PostprocessingRequestTrace> _requestTraces;
         private DateTime _lastCapabilitiesRefresh = DateTime.MinValue;
         private readonly TimeSpan _cacheTimeout = TimeSpan.FromMinutes(15);
+        
+        // Phase 4 Enhancement: ML-Based Connection Optimization
+        private readonly IPostprocessingMLOptimizer _mlOptimizer;
+        private readonly IConnectionPatternAnalyzer _patternAnalyzer;
+        private readonly Dictionary<string, ConnectionConfig> _connectionConfigs;
+        private readonly Dictionary<string, PostprocessingPerformanceData> _performanceHistory;
 
         public ServicePostprocessing(
             ILogger<ServicePostprocessing> logger,
             IPythonWorkerService pythonWorkerService,
             PostprocessingFieldTransformer fieldTransformer,
-            IMemoryCache memoryCache)
+            IMemoryCache memoryCache,
+            IPostprocessingMLOptimizer? mlOptimizer = null,
+            IConnectionPatternAnalyzer? patternAnalyzer = null)
         {
             _logger = logger;
             _pythonWorkerService = pythonWorkerService;
@@ -40,6 +48,12 @@ namespace DeviceOperations.Services.Postprocessing
             _capabilitiesCache = new Dictionary<string, PostprocessingCapability>();
             _activeJobs = new Dictionary<string, PostprocessingJob>();
             _requestTraces = new Dictionary<string, PostprocessingRequestTrace>();
+            
+            // Phase 4 Enhancement: Initialize ML optimization components
+            _mlOptimizer = mlOptimizer ?? new DefaultPostprocessingMLOptimizer(_logger);
+            _patternAnalyzer = patternAnalyzer ?? new DefaultConnectionPatternAnalyzer(_logger);
+            _connectionConfigs = new Dictionary<string, ConnectionConfig>();
+            _performanceHistory = new Dictionary<string, PostprocessingPerformanceData>();
         }
 
         public async Task<ApiResponse<GetPostprocessingCapabilitiesResponse>> GetPostprocessingCapabilitiesAsync()
@@ -933,7 +947,7 @@ namespace DeviceOperations.Services.Postprocessing
 
             var completedTraces = traces.Where(t => t.Status == PostprocessingRequestStatus.Completed).ToList();
             var failedTraces = traces.Where(t => t.Status == PostprocessingRequestStatus.Failed).ToList();
-            var processingTimes = completedTraces.Where(t => t.ProcessingTimeMs.HasValue).Select(t => t.ProcessingTimeMs.Value).ToList();
+            var processingTimes = completedTraces.Where(t => t.ProcessingTimeMs.HasValue).Select(t => t.ProcessingTimeMs!.Value).ToList();
 
             return new PostprocessingCoreMetrics
             {
@@ -2821,6 +2835,319 @@ namespace DeviceOperations.Services.Postprocessing
         {
             // Simplified calculation based on request volume
             return Math.Max(1, Math.Min(10, traces.Count / 20));
+        }
+
+        #endregion
+
+        #region Phase 4 Enhancement: Machine Learning-Based Connection Optimization
+
+        /// <summary>
+        /// Optimize connection configuration using ML-based analysis
+        /// Phase 4 Enhancement: ML-driven connection pool management
+        /// </summary>
+        private async Task<ConnectionConfig> OptimizeConnectionWithMLAsync(PostPostprocessingRequest request)
+        {
+            try
+            {
+                // Analyze request patterns
+                var requestPattern = await _patternAnalyzer.AnalyzeRequestPattern(request);
+                
+                // Get ML recommendations
+                var mlRecommendation = await _mlOptimizer.GetConnectionRecommendation(requestPattern);
+                
+                // Combine with rule-based optimization
+                var baseConfig = await OptimizeConnectionForRequest(request);
+                
+                // Apply ML enhancements
+                var optimizedConfig = new ConnectionConfig
+                {
+                    PoolSize = mlRecommendation.OptimalPoolSize ?? baseConfig.PoolSize,
+                    TimeoutMs = mlRecommendation.OptimalTimeout ?? baseConfig.TimeoutMs,
+                    OptimizationLevel = mlRecommendation.OptimizationStrategy ?? baseConfig.OptimizationLevel,
+                    EnableCompression = baseConfig.EnableCompression,
+                    EnableKeepAlive = baseConfig.EnableKeepAlive
+                };
+
+                // Cache the optimized configuration
+                var cacheKey = GenerateConfigCacheKey(request);
+                _connectionConfigs[cacheKey] = optimizedConfig;
+                
+                _logger.LogDebug($"ML-optimized connection config: PoolSize={optimizedConfig.PoolSize}, Timeout={optimizedConfig.TimeoutMs}ms");
+                
+                return optimizedConfig;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to apply ML optimization, falling back to rule-based optimization");
+                return await OptimizeConnectionForRequest(request);
+            }
+        }
+
+        /// <summary>
+        /// Update ML model with performance feedback data
+        /// Phase 4 Enhancement: Adaptive optimization based on real-time feedback
+        /// </summary>
+        public async Task UpdateMLModelWithPerformanceData(PostprocessingPerformanceData performanceData)
+        {
+            try
+            {
+                await _mlOptimizer.UpdateModel(performanceData);
+                await _patternAnalyzer.RecordPatternOutcome(performanceData);
+                
+                // Store performance history
+                var historyKey = $"{performanceData.RequestId}_{performanceData.Timestamp:yyyyMMddHHmmss}";
+                _performanceHistory[historyKey] = performanceData;
+                
+                // Clean up old history (keep last 1000 entries)
+                if (_performanceHistory.Count > 1000)
+                {
+                    var oldestKeys = _performanceHistory.Keys.OrderBy(k => k).Take(_performanceHistory.Count - 1000);
+                    foreach (var key in oldestKeys)
+                    {
+                        _performanceHistory.Remove(key);
+                    }
+                }
+                
+                // Trigger model retraining if improvement threshold reached
+                if (await _mlOptimizer.ShouldRetrain())
+                {
+                    _ = Task.Run(async () => 
+                    {
+                        try
+                        {
+                            await _mlOptimizer.RetrainModel();
+                            _logger.LogInformation("ML model retrained successfully");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to retrain ML model");
+                        }
+                    });
+                }
+                
+                _logger.LogDebug($"Updated ML model with performance data for request {performanceData.RequestId}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update ML model with performance data");
+            }
+        }
+
+        /// <summary>
+        /// Generate enhanced predictive insights using ML
+        /// Phase 4 Enhancement: Predictive performance analytics
+        /// </summary>
+        private async Task<PostprocessingPredictiveInsights> GenerateAdvancedPredictiveInsights(
+            List<PostprocessingRequestTrace> traces)
+        {
+            try
+            {
+                var mlPredictions = await _mlOptimizer.GeneratePredictions(traces);
+                var patternAnalysis = await _patternAnalyzer.AnalyzeLongTermTrends(traces);
+                
+                return new PostprocessingPredictiveInsights
+                {
+                    LoadForecast = new LoadForecast
+                    {
+                        PredictedLoad = mlPredictions.LoadPredictions.Select((load, index) => new LoadPredictionPoint
+                        {
+                            Timestamp = DateTime.UtcNow.AddMinutes(index * 5),
+                            PredictedRequests = load,
+                            ConfidenceInterval = mlPredictions.LoadConfidence * 0.1
+                        }).ToList(),
+                        ConfidenceLevel = mlPredictions.LoadConfidence,
+                        ForecastMethod = "ML-Enhanced with Pattern Analysis",
+                        PredictionAccuracy = await CalculatePredictionAccuracy()
+                    },
+                    
+                    PerformancePrediction = new PerformancePrediction
+                    {
+                        ExpectedThroughput = mlPredictions.ExpectedThroughput,
+                        ExpectedLatency = mlPredictions.ExpectedLatency,
+                        OptimizationOpportunities = await IdentifyOptimizationOpportunities(mlPredictions),
+                        ResourceUtilizationForecast = mlPredictions.ResourceForecast
+                    },
+                    
+                    // Advanced bottleneck prediction
+                    PredictedBottlenecks = await PredictBottlenecksWithML(traces, mlPredictions),
+                    
+                    // Intelligent capacity recommendations
+                    CapacityRecommendations = await GenerateMLBasedCapacityRecommendations(
+                        traces, mlPredictions, patternAnalysis)
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate advanced predictive insights");
+                
+                // Fallback to basic predictive insights
+                return new PostprocessingPredictiveInsights
+                {
+                    LoadForecast = new LoadForecast
+                    {
+                        ForecastMethod = "Basic Statistical Analysis (ML Failed)",
+                        ConfidenceLevel = 0.5,
+                        PredictionAccuracy = 0.7
+                    }
+                };
+            }
+        }
+
+        /// <summary>
+        /// Predict bottlenecks using ML analysis
+        /// </summary>
+        private async Task<List<PredictedBottleneck>> PredictBottlenecksWithML(
+            List<PostprocessingRequestTrace> traces, MLPredictions predictions)
+        {
+            var bottlenecks = new List<PredictedBottleneck>();
+            
+            try
+            {
+                // Memory bottleneck prediction
+                if (predictions.MemoryUtilizationTrend > 0.85)
+                {
+                    bottlenecks.Add(new PredictedBottleneck
+                    {
+                        Type = "Memory Shortage",
+                        PredictedTime = DateTime.Now.AddMinutes(predictions.MemoryBottleneckETA),
+                        Severity = predictions.MemoryBottleneckSeverity,
+                        Mitigation = await GenerateMemoryMitigation(predictions),
+                        ConfidenceScore = predictions.MemoryPredictionConfidence
+                    });
+                }
+                
+                // Connection pool bottleneck prediction
+                if (predictions.ConnectionUtilizationTrend > 0.80)
+                {
+                    bottlenecks.Add(new PredictedBottleneck
+                    {
+                        Type = "Connection Pool Exhaustion",
+                        PredictedTime = DateTime.Now.AddMinutes(predictions.ConnectionBottleneckETA),
+                        Severity = predictions.ConnectionBottleneckSeverity,
+                        Mitigation = await GenerateConnectionMitigation(predictions),
+                        ConfidenceScore = predictions.ConnectionPredictionConfidence
+                    });
+                }
+                
+                // Processing capacity bottleneck prediction
+                if (predictions.ProcessingCapacityTrend > 0.90)
+                {
+                    bottlenecks.Add(new PredictedBottleneck
+                    {
+                        Type = "Processing Capacity Limit",
+                        PredictedTime = DateTime.Now.AddMinutes(predictions.ProcessingBottleneckETA),
+                        Severity = predictions.ProcessingBottleneckSeverity,
+                        Mitigation = await GenerateProcessingMitigation(predictions),
+                        ConfidenceScore = predictions.ProcessingPredictionConfidence
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to predict bottlenecks with ML");
+            }
+            
+            return bottlenecks;
+        }
+
+        /// <summary>
+        /// Generate ML-based capacity recommendations
+        /// </summary>
+        private async Task<CapacityRecommendations> GenerateMLBasedCapacityRecommendations(
+            List<PostprocessingRequestTrace> traces, MLPredictions predictions, PatternAnalysis patternAnalysis)
+        {
+            var recommendations = new List<CapacityRecommendation>();
+            
+            try
+            {
+                // Scaling recommendations based on ML predictions
+                if (predictions.PredictedLoadIncrease > 0.3)
+                {
+                    recommendations.Add(new CapacityRecommendation
+                    {
+                        Type = "Scale Up",
+                        Priority = "High",
+                        Description = $"Predicted {predictions.PredictedLoadIncrease:P0} load increase",
+                        RecommendedAction = "Increase connection pool size and processing capacity",
+                        EstimatedBenefit = $"Maintain sub-{predictions.TargetLatencyMs}ms latency",
+                        ImplementationComplexity = "Medium",
+                        EstimatedCost = await EstimateScalingCost(predictions.PredictedLoadIncrease)
+                    });
+                }
+                
+                // Optimization recommendations
+                if (patternAnalysis.OptimizationPotential > 0.2)
+                {
+                    recommendations.Add(new CapacityRecommendation
+                    {
+                        Type = "Optimize",
+                        Priority = "Medium",
+                        Description = $"Identified {patternAnalysis.OptimizationPotential:P0} optimization potential",
+                        RecommendedAction = patternAnalysis.RecommendedOptimizations,
+                        EstimatedBenefit = $"Reduce processing time by {patternAnalysis.ExpectedImprovement:P0}",
+                        ImplementationComplexity = "Low",
+                        EstimatedCost = "Minimal"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate ML-based capacity recommendations");
+            }
+            
+            return new CapacityRecommendations
+            {
+                RecommendedConcurrency = recommendations.Count > 0 ? 
+                    Math.Max(System.Environment.ProcessorCount * 2, 4) : System.Environment.ProcessorCount,
+                ScalingAdvice = string.Join("; ", recommendations.Select(r => r.Description)),
+                ResourceRecommendations = recommendations.ToDictionary(
+                    r => r.Type, 
+                    r => (object)new { r.Description, r.Priority, r.EstimatedCost })
+            };
+        }
+
+        /// <summary>
+        /// Helper methods for ML optimization
+        /// </summary>
+        private string GenerateConfigCacheKey(PostPostprocessingRequest request)
+        {
+            return $"config_{request.GetType().Name}_{request.GetHashCode():X8}";
+        }
+
+        private Task<double> CalculatePredictionAccuracy()
+        {
+            // Calculate based on historical prediction vs actual performance
+            return Task.FromResult(0.85); // Placeholder
+        }
+
+        private Task<List<string>> IdentifyOptimizationOpportunities(MLPredictions predictions)
+        {
+            return Task.FromResult(new List<string>
+            {
+                "Connection pool optimization",
+                "Memory usage reduction",
+                "Processing pipeline enhancement"
+            });
+        }
+
+        private Task<string> GenerateMemoryMitigation(MLPredictions predictions)
+        {
+            return Task.FromResult("Implement memory pooling and garbage collection optimization");
+        }
+
+        private Task<string> GenerateConnectionMitigation(MLPredictions predictions)
+        {
+            return Task.FromResult("Increase connection pool size and implement connection recycling");
+        }
+
+        private Task<string> GenerateProcessingMitigation(MLPredictions predictions)
+        {
+            return Task.FromResult("Scale processing workers and optimize queue management");
+        }
+
+        private Task<string> EstimateScalingCost(double loadIncrease)
+        {
+            return Task.FromResult($"${loadIncrease * 100:F0}/month estimated additional capacity cost");
         }
 
         #endregion

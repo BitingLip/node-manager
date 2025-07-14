@@ -1,4 +1,5 @@
 using DeviceOperations.Models.Postprocessing;
+using DeviceOperations.Services.Postprocessing;
 
 namespace DeviceOperations.Models.Postprocessing
 {
@@ -271,6 +272,7 @@ namespace DeviceOperations.Models.Postprocessing
         public List<LoadPredictionPoint> PredictedLoad { get; set; } = new();
         public double ConfidenceLevel { get; set; }
         public string ForecastMethod { get; set; } = string.Empty;
+        public double PredictionAccuracy { get; set; }
     }
 
     /// <summary>
@@ -292,6 +294,10 @@ namespace DeviceOperations.Models.Postprocessing
         public double PredictedThroughput { get; set; }
         public double PredictedErrorRate { get; set; }
         public string Confidence { get; set; } = string.Empty;
+        public double ExpectedThroughput { get; set; }
+        public TimeSpan ExpectedLatency { get; set; }
+        public List<string> OptimizationOpportunities { get; set; } = new();
+        public ResourceForecast ResourceUtilizationForecast { get; set; } = new();
     }
 
     /// <summary>
@@ -303,6 +309,8 @@ namespace DeviceOperations.Models.Postprocessing
         public DateTime PredictedTime { get; set; }
         public string Severity { get; set; } = string.Empty;
         public string Mitigation { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public double ConfidenceScore { get; set; }
     }
 
     /// <summary>

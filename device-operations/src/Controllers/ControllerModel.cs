@@ -63,27 +63,27 @@ namespace DeviceOperations.Controllers
         /// <summary>
         /// Get model status for specific device
         /// </summary>
-        /// <param name="idDevice">Device identifier</param>
+        /// <param name="deviceId">Device identifier</param>
         /// <returns>Model status information for the specified device</returns>
         /// <response code="200">Returns model status for the specified device</response>
         /// <response code="404">Device not found</response>
         /// <response code="500">Internal server error occurred</response>
-        [HttpGet("status/{idDevice}")]
+        [HttpGet("status/{deviceId}")]
         [ProducesResponseType(typeof(ApiResponse<GetModelStatusResponse>), 200)]
         [ProducesResponseType(typeof(ApiResponse<object>), 404)]
         [ProducesResponseType(typeof(ApiResponse<object>), 500)]
-        public async Task<ActionResult<ApiResponse<GetModelStatusResponse>>> GetModelStatus(string idDevice)
+        public async Task<ActionResult<ApiResponse<GetModelStatusResponse>>> GetModelStatus(string deviceId)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(idDevice))
+                if (string.IsNullOrWhiteSpace(deviceId))
                 {
                     return BadRequest(ApiResponse<GetModelStatusResponse>.CreateError(
                         new ErrorDetails { Message = "Device ID cannot be null or empty" }));
                 }
 
-                _logger.LogInformation("Getting model status for device: {DeviceId}", idDevice);
-                var result = await _serviceModel.GetModelStatusAsync(idDevice);
+                _logger.LogInformation("Getting model status for device: {DeviceId}", deviceId);
+                var result = await _serviceModel.GetModelStatusAsync(deviceId);
 
                 if (result.IsSuccess)
                 {
@@ -99,7 +99,7 @@ namespace DeviceOperations.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error in GetModelStatus for device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Unexpected error in GetModelStatus for device: {DeviceId}", deviceId);
                 return StatusCode(500, ApiResponse<GetModelStatusResponse>.CreateError(
                     new ErrorDetails { Message = "Internal server error occurred" }));
             }
@@ -148,23 +148,23 @@ namespace DeviceOperations.Controllers
         /// <summary>
         /// Load model configuration onto specific device
         /// </summary>
-        /// <param name="idDevice">Device identifier</param>
+        /// <param name="deviceId">Device identifier</param>
         /// <param name="request">Model load request with configuration parameters</param>
         /// <returns>Result of model load operation</returns>
         /// <response code="200">Model loaded successfully</response>
         /// <response code="400">Invalid request parameters</response>
         /// <response code="404">Device not found</response>
         /// <response code="500">Internal server error occurred</response>
-        [HttpPost("load/{idDevice}")]
+        [HttpPost("load/{deviceId}")]
         [ProducesResponseType(typeof(ApiResponse<PostModelLoadResponse>), 200)]
         [ProducesResponseType(typeof(ApiResponse<object>), 400)]
         [ProducesResponseType(typeof(ApiResponse<object>), 404)]
         [ProducesResponseType(typeof(ApiResponse<object>), 500)]
-        public async Task<ActionResult<ApiResponse<PostModelLoadResponse>>> PostModelLoad(string idDevice, [FromBody] PostModelLoadRequest request)
+        public async Task<ActionResult<ApiResponse<PostModelLoadResponse>>> PostModelLoad(string deviceId, [FromBody] PostModelLoadRequest request)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(idDevice))
+                if (string.IsNullOrWhiteSpace(deviceId))
                 {
                     return BadRequest(ApiResponse<PostModelLoadResponse>.CreateError(
                         new ErrorDetails { Message = "Device ID cannot be null or empty" }));
@@ -176,8 +176,8 @@ namespace DeviceOperations.Controllers
                         new ErrorDetails { Message = "Model load request cannot be null" }));
                 }
 
-                _logger.LogInformation("Loading model configuration onto device {DeviceId}: {ModelPath}", idDevice, request.ModelPath);
-                var result = await _serviceModel.PostModelLoadAsync(request, idDevice);
+                _logger.LogInformation("Loading model configuration onto device {DeviceId}: {ModelPath}", deviceId, request.ModelPath);
+                var result = await _serviceModel.PostModelLoadAsync(request, deviceId);
 
                 if (result.IsSuccess)
                 {
@@ -193,7 +193,7 @@ namespace DeviceOperations.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error in PostModelLoad for device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Unexpected error in PostModelLoad for device: {DeviceId}", deviceId);
                 return StatusCode(500, ApiResponse<PostModelLoadResponse>.CreateError(
                     new ErrorDetails { Message = "Internal server error occurred" }));
             }
@@ -240,33 +240,33 @@ namespace DeviceOperations.Controllers
         /// <summary>
         /// Unload model from specific device
         /// </summary>
-        /// <param name="idDevice">Device identifier</param>
+        /// <param name="deviceId">Device identifier</param>
         /// <returns>Result of model unload operation</returns>
         /// <response code="200">Model unloaded successfully</response>
         /// <response code="404">Device not found</response>
         /// <response code="500">Internal server error occurred</response>
-        [HttpDelete("unload/{idDevice}")]
+        [HttpDelete("unload/{deviceId}")]
         [ProducesResponseType(typeof(ApiResponse<DeleteModelUnloadResponse>), 200)]
         [ProducesResponseType(typeof(ApiResponse<object>), 404)]
         [ProducesResponseType(typeof(ApiResponse<object>), 500)]
-        public async Task<ActionResult<ApiResponse<DeleteModelUnloadResponse>>> DeleteModelUnload(string idDevice)
+        public async Task<ActionResult<ApiResponse<DeleteModelUnloadResponse>>> DeleteModelUnload(string deviceId)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(idDevice))
+                if (string.IsNullOrWhiteSpace(deviceId))
                 {
                     return BadRequest(ApiResponse<DeleteModelUnloadResponse>.CreateError(
                         new ErrorDetails { Message = "Device ID cannot be null or empty" }));
                 }
 
-                _logger.LogInformation("Unloading model from device: {DeviceId}", idDevice);
+                _logger.LogInformation("Unloading model from device: {DeviceId}", deviceId);
                 
                 // Mock implementation - using available PostModelUnloadAsync method
                 await Task.Delay(1);
                 var result = ApiResponse<DeleteModelUnloadResponse>.CreateSuccess(new DeleteModelUnloadResponse
                 {
                     Success = true,
-                    Message = $"Model unloaded successfully from device {idDevice}"
+                    Message = $"Model unloaded successfully from device {deviceId}"
                 });
 
                 if (result.IsSuccess)
@@ -283,7 +283,7 @@ namespace DeviceOperations.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error in DeleteModelUnload for device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Unexpected error in DeleteModelUnload for device: {DeviceId}", deviceId);
                 return StatusCode(500, ApiResponse<DeleteModelUnloadResponse>.CreateError(
                     new ErrorDetails { Message = "Internal server error occurred" }));
             }
@@ -595,23 +595,23 @@ namespace DeviceOperations.Controllers
         /// <summary>
         /// Load cached components to VRAM on specific device
         /// </summary>
-        /// <param name="idDevice">Device identifier</param>
+        /// <param name="deviceId">Device identifier</param>
         /// <param name="request">VRAM load request with component parameters</param>
         /// <returns>Result of VRAM load operation</returns>
         /// <response code="200">Components loaded to VRAM successfully</response>
         /// <response code="400">Invalid request parameters</response>
         /// <response code="404">Device not found</response>
         /// <response code="500">Internal server error occurred</response>
-        [HttpPost("vram/load/{idDevice}")]
+        [HttpPost("vram/load/{deviceId}")]
         [ProducesResponseType(typeof(ApiResponse<PostModelVramLoadResponse>), 200)]
         [ProducesResponseType(typeof(ApiResponse<object>), 400)]
         [ProducesResponseType(typeof(ApiResponse<object>), 404)]
         [ProducesResponseType(typeof(ApiResponse<object>), 500)]
-        public async Task<ActionResult<ApiResponse<PostModelVramLoadResponse>>> PostModelVramLoad(string idDevice, [FromBody] PostModelVramLoadRequest request)
+        public async Task<ActionResult<ApiResponse<PostModelVramLoadResponse>>> PostModelVramLoad(string deviceId, [FromBody] PostModelVramLoadRequest request)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(idDevice))
+                if (string.IsNullOrWhiteSpace(deviceId))
                 {
                     return BadRequest(ApiResponse<PostModelVramLoadResponse>.CreateError(
                         new ErrorDetails { Message = "Device ID cannot be null or empty" }));
@@ -623,7 +623,7 @@ namespace DeviceOperations.Controllers
                         new ErrorDetails { Message = "VRAM load request cannot be null" }));
                 }
 
-                _logger.LogInformation("Loading cached components to VRAM on device: {DeviceId}", idDevice);
+                _logger.LogInformation("Loading cached components to VRAM on device: {DeviceId}", deviceId);
                 
                 // Mock implementation
                 await Task.Delay(1);
@@ -649,7 +649,7 @@ namespace DeviceOperations.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error in PostModelVramLoad for device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Unexpected error in PostModelVramLoad for device: {DeviceId}", deviceId);
                 return StatusCode(500, ApiResponse<PostModelVramLoadResponse>.CreateError(
                     new ErrorDetails { Message = "Internal server error occurred" }));
             }
@@ -707,23 +707,23 @@ namespace DeviceOperations.Controllers
         /// <summary>
         /// Unload components from VRAM on specific device
         /// </summary>
-        /// <param name="idDevice">Device identifier</param>
+        /// <param name="deviceId">Device identifier</param>
         /// <param name="request">VRAM unload request with component parameters</param>
         /// <returns>Result of VRAM unload operation</returns>
         /// <response code="200">Components unloaded from VRAM successfully</response>
         /// <response code="400">Invalid request parameters</response>
         /// <response code="404">Device not found</response>
         /// <response code="500">Internal server error occurred</response>
-        [HttpDelete("vram/unload/{idDevice}")]
+        [HttpDelete("vram/unload/{deviceId}")]
         [ProducesResponseType(typeof(ApiResponse<DeleteModelVramUnloadResponse>), 200)]
         [ProducesResponseType(typeof(ApiResponse<object>), 400)]
         [ProducesResponseType(typeof(ApiResponse<object>), 404)]
         [ProducesResponseType(typeof(ApiResponse<object>), 500)]
-        public async Task<ActionResult<ApiResponse<DeleteModelVramUnloadResponse>>> DeleteModelVramUnload(string idDevice, [FromBody] DeleteModelVramUnloadRequest request)
+        public async Task<ActionResult<ApiResponse<DeleteModelVramUnloadResponse>>> DeleteModelVramUnload(string deviceId, [FromBody] DeleteModelVramUnloadRequest request)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(idDevice))
+                if (string.IsNullOrWhiteSpace(deviceId))
                 {
                     return BadRequest(ApiResponse<DeleteModelVramUnloadResponse>.CreateError(
                         new ErrorDetails { Message = "Device ID cannot be null or empty" }));
@@ -735,14 +735,14 @@ namespace DeviceOperations.Controllers
                         new ErrorDetails { Message = "VRAM unload request cannot be null" }));
                 }
 
-                _logger.LogInformation("Unloading components from VRAM on device: {DeviceId}", idDevice);
+                _logger.LogInformation("Unloading components from VRAM on device: {DeviceId}", deviceId);
                 
                 // Mock implementation
                 await Task.Delay(1);
                 var result = ApiResponse<DeleteModelVramUnloadResponse>.CreateSuccess(new DeleteModelVramUnloadResponse
                 {
                     Success = true,
-                    Message = $"Components unloaded from VRAM on device {idDevice}",
+                    Message = $"Components unloaded from VRAM on device {deviceId}",
                     UnloadTime = TimeSpan.FromSeconds(2),
                     VramFreed = 2048000
                 });
@@ -761,7 +761,7 @@ namespace DeviceOperations.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error in DeleteModelVramUnload for device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Unexpected error in DeleteModelVramUnload for device: {DeviceId}", deviceId);
                 return StatusCode(500, ApiResponse<DeleteModelVramUnloadResponse>.CreateError(
                     new ErrorDetails { Message = "Internal server error occurred" }));
             }

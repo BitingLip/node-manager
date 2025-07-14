@@ -101,24 +101,24 @@ namespace DeviceOperations.Services.Processing
             }
         }
 
-        public async Task<ApiResponse<ResponseModels.GetProcessingWorkflowResponse>> GetProcessingWorkflowAsync(string idWorkflow)
+        public async Task<ApiResponse<ResponseModels.GetProcessingWorkflowResponse>> GetProcessingWorkflowAsync(string workflowId)
         {
             try
             {
-                _logger.LogInformation($"Getting processing workflow: {idWorkflow}");
+                _logger.LogInformation($"Getting processing workflow: {workflowId}");
 
-                if (string.IsNullOrWhiteSpace(idWorkflow))
+                if (string.IsNullOrWhiteSpace(workflowId))
                     return ApiResponse<ResponseModels.GetProcessingWorkflowResponse>.CreateError(
                         new ErrorDetails { Message = "Workflow ID cannot be null or empty" });
 
                 await RefreshWorkflowsAsync();
 
-                if (!_workflowCache.TryGetValue(idWorkflow, out var workflow))
+                if (!_workflowCache.TryGetValue(workflowId, out var workflow))
                 {
                     // Week 13: Replace broken PROCESSING call with domain routing
-                    _logger.LogInformation("Workflow not in cache, attempting to get definition: {WorkflowId}", idWorkflow);
+                    _logger.LogInformation("Workflow not in cache, attempting to get definition: {WorkflowId}", workflowId);
                     
-                    var workflowDefinition = await GetWorkflowDefinition(idWorkflow);
+                    var workflowDefinition = await GetWorkflowDefinition(workflowId);
                     if (workflowDefinition != null)
                     {
                         workflow = new ProcessingWorkflow
@@ -131,12 +131,12 @@ namespace DeviceOperations.Services.Processing
                             UsageCount = 0,
                             Category = "Generated"
                         };
-                        _workflowCache[idWorkflow] = workflow;
+                        _workflowCache[workflowId] = workflow;
                     }
                     else
                     {
                         return ApiResponse<ResponseModels.GetProcessingWorkflowResponse>.CreateError(
-                            new ErrorDetails { Message = $"Workflow '{idWorkflow}' not found or not supported" });
+                            new ErrorDetails { Message = $"Workflow '{workflowId}' not found or not supported" });
                     }
                 }
 
@@ -299,20 +299,20 @@ namespace DeviceOperations.Services.Processing
         /// <summary>
         /// Get processing session with multi-domain status aggregation - Week 14 Enhancement
         /// </summary>
-        public async Task<ApiResponse<ResponseModels.GetProcessingSessionResponse>> GetProcessingSessionAsync(string idSession)
+        public async Task<ApiResponse<ResponseModels.GetProcessingSessionResponse>> GetProcessingSessionAsync(string sessionId)
         {
             try
             {
-                _logger.LogInformation($"Getting processing session with multi-domain aggregation: {idSession}");
+                _logger.LogInformation($"Getting processing session with multi-domain aggregation: {sessionId}");
 
-                if (string.IsNullOrWhiteSpace(idSession))
+                if (string.IsNullOrWhiteSpace(sessionId))
                     return ApiResponse<ResponseModels.GetProcessingSessionResponse>.CreateError(
                         new ErrorDetails { Message = "Session ID cannot be null or empty" });
 
-                if (!_activeSessions.TryGetValue(idSession, out var session))
+                if (!_activeSessions.TryGetValue(sessionId, out var session))
                 {
                     return ApiResponse<ResponseModels.GetProcessingSessionResponse>.CreateError(
-                        new ErrorDetails { Message = $"Session '{idSession}' not found" });
+                        new ErrorDetails { Message = $"Session '{sessionId}' not found" });
                 }
 
                 // Get involved domains for multi-domain status aggregation
@@ -354,32 +354,32 @@ namespace DeviceOperations.Services.Processing
                                 current_operation = d.CurrentOperation,
                                 last_updated = d.LastUpdated
                             }).ToList(),
-                            ["detailed_progress"] = await GetDetailedProgressAsync(idSession),
-                            ["execution_logs"] = await GetSessionExecutionLogsAsync(idSession),
-                            ["output_preview"] = await GetSessionOutputPreviewAsync(idSession)
+                            ["detailed_progress"] = await GetDetailedProgressAsync(sessionId),
+                            ["execution_logs"] = await GetSessionExecutionLogsAsync(sessionId),
+                            ["output_preview"] = await GetSessionOutputPreviewAsync(sessionId)
                         },
-                        ResourceUsage = await GetSessionResourceUsageAsync(idSession)
+                        ResourceUsage = await GetSessionResourceUsageAsync(sessionId)
                     }
                 };
 
-                _logger.LogInformation($"Retrieved session with multi-domain aggregation: {idSession}, Overall Status: {overallStatus.Status}, Progress: {overallProgress:F1}%");
+                _logger.LogInformation($"Retrieved session with multi-domain aggregation: {sessionId}, Overall Status: {overallStatus.Status}, Progress: {overallProgress:F1}%");
                 return ApiResponse<ResponseModels.GetProcessingSessionResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to get processing session with multi-domain aggregation: {idSession}");
+                _logger.LogError(ex, $"Failed to get processing session with multi-domain aggregation: {sessionId}");
                 return ApiResponse<ResponseModels.GetProcessingSessionResponse>.CreateError(
                     new ErrorDetails { Message = $"Failed to get processing session: {ex.Message}" });
             }
         }
 
-        public async Task<ApiResponse<ResponseModels.PostSessionControlResponse>> PostSessionControlAsync(string idSession, PostSessionControlRequest request)
+        public async Task<ApiResponse<ResponseModels.PostSessionControlResponse>> PostSessionControlAsync(string sessionId, PostSessionControlRequest request)
         {
             try
             {
-                _logger.LogInformation("Controlling session: {SessionId}, Action: {Action}", idSession, request.Action);
+                _logger.LogInformation("Controlling session: {SessionId}, Action: {Action}", sessionId, request.Action);
 
-                if (string.IsNullOrWhiteSpace(idSession))
+                if (string.IsNullOrWhiteSpace(sessionId))
                     return ApiResponse<ResponseModels.PostSessionControlResponse>.CreateError(
                         new ErrorDetails { Message = "Session ID cannot be null or empty" });
 
@@ -388,10 +388,10 @@ namespace DeviceOperations.Services.Processing
                         new ErrorDetails { Message = "Session control request cannot be null" });
 
                 // Week 13: Replace broken PROCESSING call with multi-domain coordination
-                if (!_activeSessions.TryGetValue(idSession, out var session))
+                if (!_activeSessions.TryGetValue(sessionId, out var session))
                 {
                     return ApiResponse<ResponseModels.PostSessionControlResponse>.CreateError(
-                        new ErrorDetails { Message = $"Session '{idSession}' not found" });
+                        new ErrorDetails { Message = $"Session '{sessionId}' not found" });
                 }
 
                 // Validate control action
@@ -405,7 +405,7 @@ namespace DeviceOperations.Services.Processing
                 var involvedDomains = GetSessionInvolvedDomains(session);
 
                 // Send control command to all involved domains
-                var controlResults = await SendControlToAllDomains(idSession, involvedDomains, request.Action, request.Parameters ?? new Dictionary<string, object>());
+                var controlResults = await SendControlToAllDomains(sessionId, involvedDomains, request.Action, request.Parameters ?? new Dictionary<string, object>());
                 
                 // Check if all domains successfully handled the control command
                 var failedDomains = controlResults.Where(r => !r.IsSuccess).ToList();
@@ -429,37 +429,37 @@ namespace DeviceOperations.Services.Processing
                 };
 
                 _logger.LogInformation("Session control completed: {SessionId}, Action: {Action}, Status: {Status}", 
-                    idSession, request.Action, newStatus);
+                    sessionId, request.Action, newStatus);
                 return ApiResponse<ResponseModels.PostSessionControlResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to control session: {SessionId}, Action: {Action}", idSession, request.Action);
+                _logger.LogError(ex, "Failed to control session: {SessionId}, Action: {Action}", sessionId, request.Action);
                 return ApiResponse<ResponseModels.PostSessionControlResponse>.CreateError(
                     new ErrorDetails { Message = $"Session control failed: {ex.Message}" });
             }
         }
 
-        public async Task<ApiResponse<ResponseModels.DeleteProcessingSessionResponse>> DeleteProcessingSessionAsync(string idSession)
+        public async Task<ApiResponse<ResponseModels.DeleteProcessingSessionResponse>> DeleteProcessingSessionAsync(string sessionId)
         {
             try
             {
-                _logger.LogInformation($"Deleting processing session: {idSession}");
+                _logger.LogInformation($"Deleting processing session: {sessionId}");
 
-                if (string.IsNullOrWhiteSpace(idSession))
+                if (string.IsNullOrWhiteSpace(sessionId))
                     return ApiResponse<ResponseModels.DeleteProcessingSessionResponse>.CreateError(
                         new ErrorDetails { Message = "Session ID cannot be null or empty" });
 
-                if (!_activeSessions.TryGetValue(idSession, out var session))
+                if (!_activeSessions.TryGetValue(sessionId, out var session))
                 {
                     return ApiResponse<ResponseModels.DeleteProcessingSessionResponse>.CreateError(
-                        new ErrorDetails { Message = $"Session '{idSession}' not found" });
+                        new ErrorDetails { Message = $"Session '{sessionId}' not found" });
                 }
 
                 var wasRunning = session.Status == ProcessingStatus.Running;
                 
                 // Week 13: Replace broken PROCESSING call with coordinated cleanup across domains
-                _logger.LogInformation("Starting session cleanup: {SessionId}", idSession);
+                _logger.LogInformation("Starting session cleanup: {SessionId}", sessionId);
                 
                 try
                 {
@@ -467,14 +467,14 @@ namespace DeviceOperations.Services.Processing
                     var involvedDomains = GetSessionInvolvedDomains(session);
 
                     // Send cleanup command to all involved domains
-                    var cleanupResults = await SendCleanupToAllDomains(idSession, involvedDomains, wasRunning);
+                    var cleanupResults = await SendCleanupToAllDomains(sessionId, involvedDomains, wasRunning);
                     
                     // Log any failed cleanups but continue with session deletion
                     var failedCleanups = cleanupResults.Where(r => !r.IsSuccess).ToList();
                     if (failedCleanups.Any())
                     {
                         var failures = string.Join(", ", failedCleanups.Select(f => $"{f.Domain}: {f.Error}"));
-                        _logger.LogWarning("Some domain cleanups failed for session {SessionId}: {Failures}", idSession, failures);
+                        _logger.LogWarning("Some domain cleanups failed for session {SessionId}: {Failures}", sessionId, failures);
                     }
 
                     // Update session status
@@ -485,25 +485,25 @@ namespace DeviceOperations.Services.Processing
                     var response = new ResponseModels.DeleteProcessingSessionResponse
                     {
                         Success = true,
-                        Message = $"Session {idSession} deleted successfully"
+                        Message = $"Session {sessionId} deleted successfully"
                     };
 
                     // Remove from active sessions
-                    _activeSessions.TryRemove(idSession, out _);
+                    _activeSessions.TryRemove(sessionId, out _);
 
-                    _logger.LogInformation($"Successfully deleted session: {idSession}");
+                    _logger.LogInformation($"Successfully deleted session: {sessionId}");
                     return ApiResponse<ResponseModels.DeleteProcessingSessionResponse>.CreateSuccess(response);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, $"Failed to delete processing session: {idSession}");
+                    _logger.LogError(ex, $"Failed to delete processing session: {sessionId}");
                     return ApiResponse<ResponseModels.DeleteProcessingSessionResponse>.CreateError(
                         new ErrorDetails { Message = $"Failed to delete processing session: {ex.Message}" });
                 }
             }
             catch (Exception outerEx)
             {
-                _logger.LogError(outerEx, $"Outer exception in delete processing session: {idSession}");
+                _logger.LogError(outerEx, $"Outer exception in delete processing session: {sessionId}");
                 return ApiResponse<ResponseModels.DeleteProcessingSessionResponse>.CreateError(
                     new ErrorDetails { Message = $"Failed to delete processing session: {outerEx.Message}" });
             }
@@ -563,20 +563,20 @@ namespace DeviceOperations.Services.Processing
             }
         }
 
-        public async Task<ApiResponse<ResponseModels.GetProcessingBatchResponse>> GetProcessingBatchAsync(string idBatch)
+        public async Task<ApiResponse<ResponseModels.GetProcessingBatchResponse>> GetProcessingBatchAsync(string batchId)
         {
             try
             {
-                _logger.LogInformation($"Getting processing batch: {idBatch}");
+                _logger.LogInformation($"Getting processing batch: {batchId}");
 
-                if (string.IsNullOrWhiteSpace(idBatch))
+                if (string.IsNullOrWhiteSpace(batchId))
                     return ApiResponse<ResponseModels.GetProcessingBatchResponse>.CreateError(
                         new ErrorDetails { Message = "Batch ID cannot be null or empty" });
 
-                if (!_activeBatches.TryGetValue(idBatch, out var batch))
+                if (!_activeBatches.TryGetValue(batchId, out var batch))
                 {
                     return ApiResponse<ResponseModels.GetProcessingBatchResponse>.CreateError(
-                        new ErrorDetails { Message = $"Batch '{idBatch}' not found" });
+                        new ErrorDetails { Message = $"Batch '{batchId}' not found" });
                 }
 
                 // Update batch status
@@ -611,12 +611,12 @@ namespace DeviceOperations.Services.Processing
                     }
                 };
 
-                _logger.LogInformation($"Retrieved batch details for: {idBatch}");
+                _logger.LogInformation($"Retrieved batch details for: {batchId}");
                 return ApiResponse<ResponseModels.GetProcessingBatchResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to get processing batch: {idBatch}");
+                _logger.LogError(ex, $"Failed to get processing batch: {batchId}");
                 return ApiResponse<ResponseModels.GetProcessingBatchResponse>.CreateError(
                     new ErrorDetails { Message = $"Failed to get processing batch: {ex.Message}" });
             }
@@ -670,30 +670,30 @@ namespace DeviceOperations.Services.Processing
             }
         }
 
-        public async Task<ApiResponse<ResponseModels.PostBatchExecuteResponse>> PostBatchExecuteAsync(string idBatch, PostBatchExecuteRequest request)
+        public async Task<ApiResponse<ResponseModels.PostBatchExecuteResponse>> PostBatchExecuteAsync(string batchId, PostBatchExecuteRequest request)
         {
             try
             {
-                _logger.LogInformation($"Executing processing batch: {idBatch}");
+                _logger.LogInformation($"Executing processing batch: {batchId}");
 
-                if (string.IsNullOrWhiteSpace(idBatch))
+                if (string.IsNullOrWhiteSpace(batchId))
                     return ApiResponse<ResponseModels.PostBatchExecuteResponse>.CreateError(
                         new ErrorDetails { Message = "Batch ID cannot be null or empty" });
 
-                if (!_activeBatches.TryGetValue(idBatch, out var batch))
+                if (!_activeBatches.TryGetValue(batchId, out var batch))
                 {
                     return ApiResponse<ResponseModels.PostBatchExecuteResponse>.CreateError(
-                        new ErrorDetails { Message = $"Batch '{idBatch}' not found" });
+                        new ErrorDetails { Message = $"Batch '{batchId}' not found" });
                 }
 
                 if (batch.Status != ProcessingStatus.Created && batch.Status != ProcessingStatus.Paused)
                 {
                     return ApiResponse<ResponseModels.PostBatchExecuteResponse>.CreateError(
-                        new ErrorDetails { Message = $"Batch '{idBatch}' cannot be executed in current status: {batch.Status}" });
+                        new ErrorDetails { Message = $"Batch '{batchId}' cannot be executed in current status: {batch.Status}" });
                 }
 
                 // Week 13: Replace broken PROCESSING call with sophisticated batch coordination
-                _logger.LogInformation("Starting batch execution: {BatchId}", idBatch);
+                _logger.LogInformation("Starting batch execution: {BatchId}", batchId);
                 
                 try
                 {
@@ -701,7 +701,7 @@ namespace DeviceOperations.Services.Processing
                     var batchRequest = new
                     {
                         request_id = Guid.NewGuid().ToString(),
-                        batch_id = idBatch,
+                        batch_id = batchId,
                         action = "batch_process",
                         data = new
                         {
@@ -736,11 +736,11 @@ namespace DeviceOperations.Services.Processing
                         batch.LastUpdated = DateTime.UtcNow;
                         
                         // Start background monitoring of batch progress
-                        _ = Task.Run(() => MonitorBatchProgress(idBatch, pythonResponse.data?.batch_tracking_id?.ToString()));
+                        _ = Task.Run(() => MonitorBatchProgress(batchId, pythonResponse.data?.batch_tracking_id?.ToString()));
 
                         var response = new ResponseModels.PostBatchExecuteResponse
                         {
-                            ExecutionId = idBatch,
+                            ExecutionId = batchId,
                             Status = ProcessingStatus.Running.ToString(),
                             Progress = new ResponseModels.BatchProgress
                             {
@@ -753,7 +753,7 @@ namespace DeviceOperations.Services.Processing
 
                         var trackingId = pythonResponse.data?.batch_tracking_id?.ToString() ?? "unknown";
                         _logger.LogInformation("Batch execution started: BatchId={BatchId}, TrackingId={TrackingId}", 
-                            (object)idBatch, (object)trackingId);
+                            (object)batchId, (object)trackingId);
                         return ApiResponse<ResponseModels.PostBatchExecuteResponse>.CreateSuccess(response);
                     }
                     else
@@ -761,7 +761,7 @@ namespace DeviceOperations.Services.Processing
                         var error = pythonResponse?.error?.ToString() ?? "Unknown error during batch execution";
                         batch.Status = ProcessingStatus.Failed;
                         batch.LastUpdated = DateTime.UtcNow;
-                        _logger.LogError("Batch execution failed: BatchId={BatchId}, Error={Error}", (object)idBatch, (object)error);
+                        _logger.LogError("Batch execution failed: BatchId={BatchId}, Error={Error}", (object)batchId, (object)error);
                         return ApiResponse<ResponseModels.PostBatchExecuteResponse>.CreateError(
                             new ErrorDetails { Message = $"Batch execution failed: {error}" });
                     }
@@ -770,39 +770,39 @@ namespace DeviceOperations.Services.Processing
                 {
                     batch.Status = ProcessingStatus.Failed;
                     batch.LastUpdated = DateTime.UtcNow;
-                    _logger.LogError(ex, "Exception during batch execution: {BatchId}", idBatch);
+                    _logger.LogError(ex, "Exception during batch execution: {BatchId}", batchId);
                     return ApiResponse<ResponseModels.PostBatchExecuteResponse>.CreateError(
                         new ErrorDetails { Message = $"Batch execution failed: {ex.Message}" });
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to execute processing batch: {BatchId}", idBatch);
+                _logger.LogError(ex, "Failed to execute processing batch: {BatchId}", batchId);
                 return ApiResponse<ResponseModels.PostBatchExecuteResponse>.CreateError(
                     new ErrorDetails { Message = $"Failed to execute batch: {ex.Message}" });
             }
         }
 
-        public async Task<ApiResponse<ResponseModels.DeleteProcessingBatchResponse>> DeleteProcessingBatchAsync(string idBatch)
+        public async Task<ApiResponse<ResponseModels.DeleteProcessingBatchResponse>> DeleteProcessingBatchAsync(string batchId)
         {
             try
             {
-                _logger.LogInformation($"Deleting processing batch: {idBatch}");
+                _logger.LogInformation($"Deleting processing batch: {batchId}");
 
-                if (string.IsNullOrWhiteSpace(idBatch))
+                if (string.IsNullOrWhiteSpace(batchId))
                     return ApiResponse<ResponseModels.DeleteProcessingBatchResponse>.CreateError(
                         new ErrorDetails { Message = "Batch ID cannot be null or empty" });
 
-                if (!_activeBatches.TryGetValue(idBatch, out var batch))
+                if (!_activeBatches.TryGetValue(batchId, out var batch))
                 {
                     return ApiResponse<ResponseModels.DeleteProcessingBatchResponse>.CreateError(
-                        new ErrorDetails { Message = $"Batch '{idBatch}' not found" });
+                        new ErrorDetails { Message = $"Batch '{batchId}' not found" });
                 }
 
                 var wasRunning = batch.Status == ProcessingStatus.Running;
                 
                 // Week 13: Replace broken PROCESSING call with coordinated batch cleanup across domains
-                _logger.LogInformation("Starting batch cleanup: {BatchId}", idBatch);
+                _logger.LogInformation("Starting batch cleanup: {BatchId}", batchId);
                 
                 try
                 {
@@ -810,18 +810,18 @@ namespace DeviceOperations.Services.Processing
                     var involvedDomains = GetBatchInvolvedDomains(batch);
 
                     // Send cleanup command to all involved domains
-                    var cleanupResults = await SendBatchCleanupToAllDomains(idBatch, involvedDomains, wasRunning);
+                    var cleanupResults = await SendBatchCleanupToAllDomains(batchId, involvedDomains, wasRunning);
                     
                     // Log any failed cleanups but continue with batch deletion
                     var failedCleanups = cleanupResults.Where(r => !r.IsSuccess).ToList();
                     if (failedCleanups.Any())
                     {
                         var failures = string.Join(", ", failedCleanups.Select(f => $"{f.Domain}: {f.Error}"));
-                        _logger.LogWarning("Some domain cleanups failed for batch {BatchId}: {Failures}", idBatch, failures);
+                        _logger.LogWarning("Some domain cleanups failed for batch {BatchId}: {Failures}", batchId, failures);
                     }
 
                     // Stop background monitoring if running
-                    if (wasRunning && _batchMonitoringTasks.TryRemove(idBatch, out var monitoringTask))
+                    if (wasRunning && _batchMonitoringTasks.TryRemove(batchId, out var monitoringTask))
                     {
                         try
                         {
@@ -841,18 +841,18 @@ namespace DeviceOperations.Services.Processing
                     var response = new ResponseModels.DeleteProcessingBatchResponse
                     {
                         Success = true,
-                        Message = $"Batch {idBatch} deleted successfully"
+                        Message = $"Batch {batchId} deleted successfully"
                     };
 
                     // Remove from active batches
-                    _activeBatches.TryRemove(idBatch, out _);
+                    _activeBatches.TryRemove(batchId, out _);
 
-                    _logger.LogInformation($"Successfully deleted batch: {idBatch}");
+                    _logger.LogInformation($"Successfully deleted batch: {batchId}");
                     return ApiResponse<ResponseModels.DeleteProcessingBatchResponse>.CreateSuccess(response);
                 }
                 catch (Exception cleanupEx)
                 {
-                    _logger.LogWarning(cleanupEx, "Error during batch cleanup, continuing with deletion: {BatchId}", idBatch);
+                    _logger.LogWarning(cleanupEx, "Error during batch cleanup, continuing with deletion: {BatchId}", batchId);
                     
                     // Still complete the deletion even if cleanup failed
                     batch.Status = ProcessingStatus.Cancelled;
@@ -862,18 +862,18 @@ namespace DeviceOperations.Services.Processing
                     var response = new ResponseModels.DeleteProcessingBatchResponse
                     {
                         Success = true,
-                        Message = $"Batch {idBatch} deleted successfully (with cleanup warnings)"
+                        Message = $"Batch {batchId} deleted successfully (with cleanup warnings)"
                     };
 
                     // Remove from active batches
-                    _activeBatches.TryRemove(idBatch, out _);
+                    _activeBatches.TryRemove(batchId, out _);
 
                     return ApiResponse<ResponseModels.DeleteProcessingBatchResponse>.CreateSuccess(response);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to delete processing batch: {idBatch}");
+                _logger.LogError(ex, $"Failed to delete processing batch: {batchId}");
                 return ApiResponse<ResponseModels.DeleteProcessingBatchResponse>.CreateError(
                     new ErrorDetails { Message = $"Failed to delete processing batch: {ex.Message}" });
             }

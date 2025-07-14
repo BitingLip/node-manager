@@ -398,30 +398,47 @@ namespace DeviceOperations.Services.Inference
                         new ErrorDetails { Message = $"Device '{idDevice}' is not available for inference" });
                 }
 
-                // Mock: All devices support all models (for now)
-                // TODO: Implement actual model support checking based on device capabilities
-                var supportedModels = new List<string> { "all", request.ModelId, "mock-model-1", "mock-model-2" };
-                if (!supportedModels.Contains(request.ModelId) && !supportedModels.Contains("all"))
+                // Validate model support through Python worker
+                var validationRequest = new
                 {
+                    model_id = request.ModelId,
+                    device_id = idDevice,
+                    inference_type = request.InferenceType.ToString(),
+                    action = "validate_model_support"
+                };
+
+                var validationResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.INFERENCE, "inference.validate_request", validationRequest);
+
+                if (validationResponse?.success != true || validationResponse?.data?.valid != true)
+                {
+                    var errorMessage = validationResponse?.data?.errors?.Count > 0 ? 
+                        string.Join(", ", (IEnumerable<dynamic>)validationResponse.data.errors) :
+                        $"Device '{idDevice}' does not support model '{request.ModelId}' for inference type '{request.InferenceType}'";
+                    
                     return ApiResponse<PostInferenceExecuteDeviceResponse>.CreateError(
-                        new ErrorDetails { Message = $"Device '{idDevice}' does not support model '{request.ModelId}'" });
+                        new ErrorDetails { Message = errorMessage });
                 }
 
                 var sessionId = Guid.NewGuid().ToString();
                 var pythonRequest = new
                 {
                     session_id = sessionId,
-                    model_id = request.ModelId,
-                    device_id = idDevice,
-                    prompt = request.Parameters.TryGetValue("prompt", out var promptValue) ? promptValue?.ToString() : "",
-                    parameters = request.Parameters,
-                    inference_type = request.InferenceType.ToString(),
-                    force_device = true,
-                    action = "execute_inference"
+                    data = new
+                    {
+                        model_id = request.ModelId,
+                        device_id = idDevice,
+                        prompt = request.Parameters.TryGetValue("prompt", out var promptValue) ? promptValue?.ToString() : "",
+                        parameters = request.Parameters,
+                        inference_type = request.InferenceType.ToString().ToLower(),
+                        force_device = true
+                    },
+                    type = $"inference.{request.InferenceType.ToString().ToLower()}",
+                    request_id = sessionId
                 };
 
                 var pythonResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
-                    PythonWorkerTypes.INFERENCE, "execute_inference", pythonRequest);
+                    PythonWorkerTypes.INFERENCE, $"inference.{request.InferenceType.ToString().ToLower()}", pythonRequest);
 
                 if (pythonResponse?.success == true)
                 {
@@ -1101,8 +1118,8 @@ namespace DeviceOperations.Services.Inference
                 }
                 else
                 {
-                    // Fallback to mock data
-                    await PopulateMockCapabilitiesAsync();
+                    // Fallback to refresh from Python
+                    await RefreshCapabilitiesFromPythonAsync();
                 }
 
                 _lastCapabilitiesRefresh = DateTime.UtcNow;
@@ -1110,8 +1127,8 @@ namespace DeviceOperations.Services.Inference
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to refresh capabilities from Python worker, using mock data");
-                await PopulateMockCapabilitiesAsync();
+                _logger.LogWarning(ex, "Failed to refresh capabilities from Python worker, using fallback data");
+                await RefreshCapabilitiesFromPythonAsync();
             }
         }
 
@@ -1133,46 +1150,88 @@ namespace DeviceOperations.Services.Inference
             };
         }
 
-        private async Task PopulateMockCapabilitiesAsync()
+        private async Task RefreshCapabilitiesFromPythonAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Refreshing capabilities from Python worker");
+                
+                var pythonRequest = new { action = "get_capabilities" };
+                var pythonResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.INFERENCE, "inference.get_capabilities", pythonRequest);
+
+                if (pythonResponse?.success == true && pythonResponse.data != null)
+                {
+                    await PopulateCapabilitiesFromPythonAsync(pythonResponse.data);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to get capabilities from Python worker, using fallback");
+                    await PopulateFallbackCapabilitiesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to refresh capabilities from Python worker");
+                await PopulateFallbackCapabilitiesAsync();
+            }
+        }
+
+        private async Task PopulateCapabilitiesFromPythonAsync(dynamic pythonCapabilities)
         {
             await Task.Delay(1); // Simulate async operation
 
-            var mockCapabilities = new[]
+            var capabilities = new InferenceCapabilities
             {
-                new InferenceCapabilities
-                {
-                    SupportedInferenceTypes = new List<string> 
-                    { 
-                        "TextGeneration", 
-                        "ImageGeneration", 
-                        "ImageToImage",
-                        "Inpainting" 
-                    },
-                    SupportedPrecisions = new List<string> { "FP32", "FP16", "INT8" },
-                    MaxBatchSize = 8,
-                    MaxConcurrentInferences = 3,
-                    MaxResolution = new Models.Common.ImageResolution { Width = 2048, Height = 2048 }
-                },
-                new InferenceCapabilities
-                {
-                    SupportedInferenceTypes = new List<string> 
-                    { 
-                        "TextGeneration", 
-                        "ImageGeneration" 
-                    },
-                    SupportedPrecisions = new List<string> { "FP32", "FP16" },
-                    MaxBatchSize = 4,
-                    MaxConcurrentInferences = 2,
-                    MaxResolution = new Models.Common.ImageResolution { Width = 1024, Height = 1024 }
+                SupportedInferenceTypes = pythonCapabilities.supported_inference_types != null ?
+                    ((IEnumerable<dynamic>)pythonCapabilities.supported_inference_types).Select(t => t.ToString()).ToList() :
+                    new List<string> { "text2img", "img2img", "inpainting", "controlnet", "lora" },
+                SupportedPrecisions = pythonCapabilities.supported_precisions != null ?
+                    ((IEnumerable<dynamic>)pythonCapabilities.supported_precisions).Select(p => p.ToString()).ToList() :
+                    new List<string> { "FP32", "FP16", "INT8" },
+                MaxBatchSize = pythonCapabilities.max_batch_size ?? 8,
+                MaxConcurrentInferences = pythonCapabilities.max_concurrent_inferences ?? 3,
+                MaxResolution = new Models.Common.ImageResolution 
+                { 
+                    Width = pythonCapabilities.max_resolution?.width ?? 2048,
+                    Height = pythonCapabilities.max_resolution?.height ?? 2048
                 }
             };
 
             _deviceCapabilities.Clear();
-            int deviceIndex = 0;
-            foreach (var capability in mockCapabilities)
+            _deviceCapabilities["system"] = capabilities;
+
+            // If device info is available, populate device-specific capabilities
+            if (pythonCapabilities.device_info != null)
             {
-                _deviceCapabilities[$"device-{deviceIndex++}"] = capability;
+                var deviceInfo = pythonCapabilities.device_info;
+                if (deviceInfo.device_id != null)
+                {
+                    _deviceCapabilities[deviceInfo.device_id.ToString()] = capabilities;
+                }
             }
+        }
+
+        private async Task PopulateFallbackCapabilitiesAsync()
+        {
+            await Task.Delay(1); // Simulate async operation
+
+            var fallbackCapabilities = new InferenceCapabilities
+            {
+                SupportedInferenceTypes = new List<string> 
+                { 
+                    "text2img", 
+                    "img2img",
+                    "inpainting" 
+                },
+                SupportedPrecisions = new List<string> { "FP32", "FP16" },
+                MaxBatchSize = 4,
+                MaxConcurrentInferences = 2,
+                MaxResolution = new Models.Common.ImageResolution { Width = 1024, Height = 1024 }
+            };
+
+            _deviceCapabilities.Clear();
+            _deviceCapabilities["system"] = fallbackCapabilities;
         }
 
         private async Task UpdateSessionStatusesAsync()

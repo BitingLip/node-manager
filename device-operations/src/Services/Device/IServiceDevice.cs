@@ -21,87 +21,87 @@ public interface IServiceDevice
     /// <summary>
     /// Get specific device information by ID
     /// </summary>
-    /// <param name="deviceId">Device identifier</param>
+    /// <param name="idDevice">Device identifier</param>
     /// <returns>Device information and details</returns>
-    Task<ApiResponse<GetDeviceResponse>> GetDeviceAsync(string deviceId);
+    Task<ApiResponse<GetDeviceResponse>> GetDeviceAsync(string idDevice);
 
     /// <summary>
     /// Get device capabilities and feature support
     /// Retrieve device capabilities and feature support
     /// </summary>
-    /// <param name="deviceId">Device identifier (optional)</param>
+    /// <param name="idDevice">Device identifier (optional)</param>
     /// <returns>Device capabilities information</returns>
-    Task<ApiResponse<DeviceCapabilities>> GetDeviceCapabilitiesAsync(string? deviceId = null);
+    Task<ApiResponse<DeviceCapabilities>> GetDeviceCapabilitiesAsync(string? idDevice = null);
 
     /// <summary>
     /// Get current operational status of devices
     /// Monitor device availability and responsiveness
     /// </summary>
-    /// <param name="deviceId">Device identifier (optional)</param>
+    /// <param name="idDevice">Device identifier (optional)</param>
     /// <returns>Device status information</returns>
-    Task<ApiResponse<GetDeviceStatusResponse>> GetDeviceStatusAsync(string? deviceId = null);
+    Task<ApiResponse<GetDeviceStatusResponse>> GetDeviceStatusAsync(string? idDevice = null);
 
     /// <summary>
     /// Perform device health check operation
     /// Run comprehensive health diagnostics
     /// </summary>
-    /// <param name="deviceId">Device identifier</param>
+    /// <param name="idDevice">Device identifier</param>
     /// <param name="request">Health check parameters</param>
     /// <returns>Health check results</returns>
-    Task<ApiResponse<PostDeviceHealthResponse>> PostDeviceHealthAsync(string deviceId, PostDeviceHealthRequest request);
+    Task<ApiResponse<PostDeviceHealthResponse>> PostDeviceHealthAsync(string idDevice, PostDeviceHealthRequest request);
 
     /// <summary>
     /// Run device benchmarks for performance testing
     /// Execute performance benchmarks and collect metrics
     /// </summary>
-    /// <param name="deviceId">Device identifier</param>
+    /// <param name="idDevice">Device identifier</param>
     /// <param name="request">Benchmark parameters</param>
     /// <returns>Benchmark results</returns>
-    Task<ApiResponse<PostDeviceBenchmarkResponse>> PostDeviceBenchmarkAsync(string deviceId, PostDeviceBenchmarkRequest request);
+    Task<ApiResponse<PostDeviceBenchmarkResponse>> PostDeviceBenchmarkAsync(string idDevice, PostDeviceBenchmarkRequest request);
 
     /// <summary>
     /// Optimize device performance settings
     /// Tune device parameters for optimal operation
     /// </summary>
-    /// <param name="deviceId">Device identifier</param>
+    /// <param name="idDevice">Device identifier</param>
     /// <param name="request">Optimization parameters</param>
     /// <returns>Optimization results</returns>
-    Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(string deviceId, PostDeviceOptimizeRequest request);
+    Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(string idDevice, PostDeviceOptimizeRequest request);
     Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(PostDeviceOptimizeRequest request);
-    Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(PostDeviceOptimizeRequest request, string deviceId);
+    Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(PostDeviceOptimizeRequest request, string idDevice);
 
     /// <summary>
     /// Get device configuration settings
     /// Retrieve current device configuration parameters
     /// </summary>
-    /// <param name="deviceId">Device identifier</param>
+    /// <param name="idDevice">Device identifier</param>
     /// <returns>Device configuration</returns>
-    Task<ApiResponse<GetDeviceConfigResponse>> GetDeviceConfigAsync(string deviceId);
+    Task<ApiResponse<GetDeviceConfigResponse>> GetDeviceConfigAsync(string idDevice);
 
     /// <summary>
     /// Update device configuration settings
     /// Apply configuration changes to device
     /// </summary>
-    /// <param name="deviceId">Device identifier</param>
+    /// <param name="idDevice">Device identifier</param>
     /// <param name="request">Configuration update parameters</param>
     /// <returns>Configuration update result</returns>
-    Task<ApiResponse<PutDeviceConfigResponse>> PutDeviceConfigAsync(string deviceId, PutDeviceConfigRequest request);
+    Task<ApiResponse<PutDeviceConfigResponse>> PutDeviceConfigAsync(string idDevice, PutDeviceConfigRequest request);
 
     /// <summary>
     /// Get detailed device information and specifications
     /// Offer detailed device metadata for system analysis
     /// </summary>
-    /// <param name="deviceId">Device identifier (optional)</param>
+    /// <param name="idDevice">Device identifier (optional)</param>
     /// <returns>Detailed device information</returns>
-    Task<ApiResponse<DeviceInfo>> GetDeviceDetailsAsync(string? deviceId = null);
+    Task<ApiResponse<DeviceInfo>> GetDeviceDetailsAsync(string? idDevice = null);
 
     /// <summary>
     /// Get device driver information and versions
     /// Monitor driver health and installation status
     /// </summary>
-    /// <param name="deviceId">Device identifier (optional)</param>
+    /// <param name="idDevice">Device identifier (optional)</param>
     /// <returns>Driver information</returns>
-    Task<ApiResponse<DriverInfo>> GetDeviceDriversAsync(string? deviceId = null);
+    Task<ApiResponse<DriverInfo>> GetDeviceDriversAsync(string? idDevice = null);
 
     /// <summary>
     /// Create or update a device set for coordinated operations
@@ -115,7 +115,7 @@ public interface IServiceDevice
     /// Get device memory information and allocation status
     /// Retrieve current memory usage and allocation information for a device
     /// </summary>
-    /// <param name="deviceId">Device identifier</param>
+    /// <param name="idDevice">Device identifier</param>
     /// <returns>Device memory information</returns>
-    Task<ApiResponse<GetDeviceMemoryResponse>> GetDeviceMemoryAsync(string deviceId);
+    Task<ApiResponse<GetDeviceMemoryResponse>> GetDeviceMemoryAsync(string idDevice);
 }

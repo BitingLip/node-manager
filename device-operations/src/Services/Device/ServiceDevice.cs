@@ -77,23 +77,23 @@ namespace DeviceOperations.Services.Device
             }
         }
 
-        public async Task<ApiResponse<GetDeviceResponse>> GetDeviceAsync(string deviceId)
+        public async Task<ApiResponse<GetDeviceResponse>> GetDeviceAsync(string idDevice)
         {
             try
             {
-                _logger.LogInformation("Getting device information for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Getting device information for device: {DeviceId}", idDevice);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<GetDeviceResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
 
                 // Try to get from cache first
-                if (!_deviceCache.TryGetValue(deviceId, out var deviceInfo))
+                if (!_deviceCache.TryGetValue(idDevice, out var deviceInfo))
                 {
                     await RefreshDeviceCacheAsync();
                     
-                    if (!_deviceCache.TryGetValue(deviceId, out deviceInfo))
+                    if (!_deviceCache.TryGetValue(idDevice, out deviceInfo))
                     {
                         // Try direct Python worker query for specific device
                         var requestId = Guid.NewGuid().ToString();
@@ -101,10 +101,10 @@ namespace DeviceOperations.Services.Device
                         { 
                             request_id = requestId,
                             action = "get_device",
-                            data = new { device_id = deviceId }
+                            data = new { device_id = idDevice }
                         };
                         
-                        _logger.LogDebug("Querying Python worker for device {DeviceId} with request ID: {RequestId}", deviceId, requestId);
+                        _logger.LogDebug("Querying Python worker for device {DeviceId} with request ID: {RequestId}", idDevice, requestId);
                         
                         var pythonResult = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                             PythonWorkerTypes.DEVICE,
@@ -115,27 +115,27 @@ namespace DeviceOperations.Services.Device
                         if (pythonResult != null)
                         {
                             deviceInfo = ConvertPythonDeviceToDeviceInfo(pythonResult);
-                            _deviceCache[deviceId] = deviceInfo;
-                            _cacheExpiryTimes[deviceId] = DateTime.UtcNow.Add(_deviceSpecificCacheTimeout);
-                            _logger.LogDebug("Retrieved device {DeviceId} from Python worker (Request ID: {RequestId})", deviceId, requestId);
+                            _deviceCache[idDevice] = deviceInfo;
+                            _cacheExpiryTimes[idDevice] = DateTime.UtcNow.Add(_deviceSpecificCacheTimeout);
+                            _logger.LogDebug("Retrieved device {DeviceId} from Python worker (Request ID: {RequestId})", idDevice, requestId);
                         }
                         else
                         {
-                            _logger.LogWarning("Device not found: {DeviceId} (Request ID: {RequestId})", deviceId, requestId);
-                            return ApiResponse<GetDeviceResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{deviceId}' not found", 404);
+                            _logger.LogWarning("Device not found: {DeviceId} (Request ID: {RequestId})", idDevice, requestId);
+                            return ApiResponse<GetDeviceResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{idDevice}' not found", 404);
                         }
                     }
                 }
 
-                if (_cacheExpiryTimes.TryGetValue(deviceId, out var expiryTime) && DateTime.UtcNow > expiryTime)
+                if (_cacheExpiryTimes.TryGetValue(idDevice, out var expiryTime) && DateTime.UtcNow > expiryTime)
                 {
-                    _logger.LogInformation("Device cache expired for device: {DeviceId}", deviceId);
-                    _deviceCache.Remove(deviceId);
-                    return await GetDeviceAsync(deviceId);
+                    _logger.LogInformation("Device cache expired for device: {DeviceId}", idDevice);
+                    _deviceCache.Remove(idDevice);
+                    return await GetDeviceAsync(idDevice);
                 }
 
-                var compatibility = await GetDeviceCompatibilityAsync(deviceId);
-                var workload = await GetDeviceWorkloadAsync(deviceId);
+                var compatibility = await GetDeviceCompatibilityAsync(idDevice);
+                var workload = await GetDeviceWorkloadAsync(idDevice);
 
                 // Convert DeviceCapabilities to DeviceCompatibility
                 var deviceCompatibility = new DeviceCompatibility();
@@ -170,12 +170,12 @@ namespace DeviceOperations.Services.Device
                     CurrentWorkload = deviceWorkload
                 };
 
-                _logger.LogInformation("Successfully retrieved device information for: {DeviceId}", deviceId);
+                _logger.LogInformation("Successfully retrieved device information for: {DeviceId}", idDevice);
                 return ApiResponse<GetDeviceResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device information for: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device information for: {DeviceId}", idDevice);
                 return ApiResponse<GetDeviceResponse>.CreateError("GET_DEVICE_ERROR", "Failed to retrieve device information", 500);
             }
         }
@@ -200,15 +200,15 @@ namespace DeviceOperations.Services.Device
                 var invalidDevices = new List<string>();
                 var validDevices = new List<DeviceInfo>();
 
-                foreach (var deviceId in request.DeviceIds)
+                foreach (var idDevice in request.DeviceIds)
                 {
-                    if (!_deviceCache.TryGetValue(deviceId, out var deviceInfo))
+                    if (!_deviceCache.TryGetValue(idDevice, out var deviceInfo))
                     {
                         // Try to refresh cache and check again
                         await RefreshDeviceCacheAsync();
-                        if (!_deviceCache.TryGetValue(deviceId, out deviceInfo))
+                        if (!_deviceCache.TryGetValue(idDevice, out deviceInfo))
                         {
-                            invalidDevices.Add(deviceId);
+                            invalidDevices.Add(idDevice);
                             continue;
                         }
                     }
@@ -325,57 +325,57 @@ namespace DeviceOperations.Services.Device
             return aggregated;
         }
 
-        public async Task<ApiResponse<DeviceCapabilities>> GetDeviceCapabilitiesAsync(string? deviceId = null)
+        public async Task<ApiResponse<DeviceCapabilities>> GetDeviceCapabilitiesAsync(string? idDevice = null)
         {
             try
             {
-                _logger.LogInformation("Getting device capabilities for: {DeviceId}", deviceId);
+                _logger.LogInformation("Getting device capabilities for: {DeviceId}", idDevice);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<DeviceCapabilities>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
 
-                if (!_capabilityCache.TryGetValue(deviceId, out var capabilities))
+                if (!_capabilityCache.TryGetValue(idDevice, out var capabilities))
                 {
-                    capabilities = await QueryDeviceCapabilitiesAsync(deviceId);
+                    capabilities = await QueryDeviceCapabilitiesAsync(idDevice);
                     if (capabilities != null)
                     {
-                        _capabilityCache[deviceId] = capabilities;
+                        _capabilityCache[idDevice] = capabilities;
                     }
                 }
 
                 if (capabilities == null)
                 {
-                    return ApiResponse<DeviceCapabilities>.CreateError("CAPABILITIES_NOT_FOUND", $"Capabilities for device '{deviceId}' not found", 404);
+                    return ApiResponse<DeviceCapabilities>.CreateError("CAPABILITIES_NOT_FOUND", $"Capabilities for device '{idDevice}' not found", 404);
                 }
 
-                _logger.LogInformation("Successfully retrieved capabilities for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Successfully retrieved capabilities for device: {DeviceId}", idDevice);
                 return ApiResponse<DeviceCapabilities>.CreateSuccess(capabilities);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device capabilities for: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device capabilities for: {DeviceId}", idDevice);
                 return ApiResponse<DeviceCapabilities>.CreateError("GET_CAPABILITIES_ERROR", "Failed to retrieve device capabilities", 500);
             }
         }
 
-        public async Task<ApiResponse<GetDeviceStatusResponse>> GetDeviceStatusAsync(string? deviceId = null)
+        public async Task<ApiResponse<GetDeviceStatusResponse>> GetDeviceStatusAsync(string? idDevice = null)
         {
             try
             {
-                _logger.LogInformation("Getting real-time device status for: {DeviceId}", deviceId ?? "all devices");
+                _logger.LogInformation("Getting real-time device status for: {DeviceId}", idDevice ?? "all devices");
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<GetDeviceStatusResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
 
                 // Get cached device info and validate device exists
-                var deviceInfo = await GetCachedDeviceInfoAsync(deviceId);
+                var deviceInfo = await GetCachedDeviceInfoAsync(idDevice);
                 if (deviceInfo == null)
                 {
-                    return ApiResponse<GetDeviceStatusResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{deviceId}' not found", 404);
+                    return ApiResponse<GetDeviceStatusResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{idDevice}' not found", 404);
                 }
 
                 // Send real-time status request to Python worker
@@ -386,14 +386,14 @@ namespace DeviceOperations.Services.Device
                     action = "get_device_status",
                     data = new 
                     { 
-                        device_id = deviceId,
+                        device_id = idDevice,
                         include_health_metrics = true,
                         include_workload_info = true,
                         include_performance_metrics = true
                     }
                 };
 
-                _logger.LogDebug("Querying real-time status for device {DeviceId} with request ID: {RequestId}", deviceId, requestId);
+                _logger.LogDebug("Querying real-time status for device {DeviceId} with request ID: {RequestId}", idDevice, requestId);
 
                 var pythonResult = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                     PythonWorkerTypes.DEVICE,
@@ -416,18 +416,18 @@ namespace DeviceOperations.Services.Device
                     workload = statusInfo.Workload;
 
                     // Detect status changes and trigger alerts if needed
-                    DetectAndHandleStatusChange(deviceId, deviceInfo.Status, currentStatus);
+                    DetectAndHandleStatusChange(idDevice, deviceInfo.Status, currentStatus);
 
                     // Update cache with latest status
                     deviceInfo.Status = currentStatus;
                     deviceInfo.Utilization = utilization;
                     deviceInfo.LastUpdated = DateTime.UtcNow;
-                    _deviceCache[deviceId] = deviceInfo;
+                    _deviceCache[idDevice] = deviceInfo;
                 }
                 else
                 {
                     _logger.LogWarning("Failed to retrieve real-time status for device {DeviceId}, using cached data (Request ID: {RequestId})", 
-                        deviceId, requestId);
+                        idDevice, requestId);
                     
                     // Fallback to cached information
                     currentStatus = deviceInfo.Status;
@@ -437,7 +437,7 @@ namespace DeviceOperations.Services.Device
 
                 var response = new GetDeviceStatusResponse
                 {
-                    DeviceId = deviceId,
+                    DeviceId = idDevice,
                     Status = currentStatus,
                     StatusDescription = GetStatusDescription(currentStatus),
                     Utilization = utilization,
@@ -447,13 +447,13 @@ namespace DeviceOperations.Services.Device
                 };
 
                 _logger.LogInformation("Successfully retrieved real-time status for device: {DeviceId}, Status: {Status} (Request ID: {RequestId})", 
-                    deviceId, currentStatus, requestId);
+                    idDevice, currentStatus, requestId);
                 
                 return ApiResponse<GetDeviceStatusResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device status for: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device status for: {DeviceId}", idDevice);
                 return ApiResponse<GetDeviceStatusResponse>.CreateError("GET_STATUS_ERROR", "Failed to retrieve device status", 500);
             }
         }
@@ -614,17 +614,17 @@ namespace DeviceOperations.Services.Device
             };
         }
 
-        private void DetectAndHandleStatusChange(string deviceId, DeviceStatus previousStatus, DeviceStatus currentStatus)
+        private void DetectAndHandleStatusChange(string idDevice, DeviceStatus previousStatus, DeviceStatus currentStatus)
         {
             if (previousStatus != currentStatus)
             {
                 _logger.LogInformation("Device status change detected for {DeviceId}: {PreviousStatus} → {CurrentStatus}", 
-                    deviceId, previousStatus, currentStatus);
+                    idDevice, previousStatus, currentStatus);
 
                 // Handle critical status changes
                 if (currentStatus == DeviceStatus.Error || currentStatus == DeviceStatus.Offline)
                 {
-                    _logger.LogWarning("Device {DeviceId} has entered critical status: {Status}", deviceId, currentStatus);
+                    _logger.LogWarning("Device {DeviceId} has entered critical status: {Status}", idDevice, currentStatus);
                     // TODO: Integration with Processing domain for workflow coordination
                     // TODO: Trigger alerts or notifications
                 }
@@ -632,7 +632,7 @@ namespace DeviceOperations.Services.Device
                 // Handle recovery
                 if (previousStatus is DeviceStatus.Error or DeviceStatus.Offline && currentStatus == DeviceStatus.Available)
                 {
-                    _logger.LogInformation("Device {DeviceId} has recovered and is now available", deviceId);
+                    _logger.LogInformation("Device {DeviceId} has recovered and is now available", idDevice);
                     // TODO: Notify Processing domain that device is available again
                 }
 
@@ -649,28 +649,28 @@ namespace DeviceOperations.Services.Device
             public DeviceWorkload? Workload { get; set; }
         }
 
-        public async Task<ApiResponse<PostDeviceHealthResponse>> PostDeviceHealthAsync(string deviceId, PostDeviceHealthRequest request)
+        public async Task<ApiResponse<PostDeviceHealthResponse>> PostDeviceHealthAsync(string idDevice, PostDeviceHealthRequest request)
         {
             try
             {
-                _logger.LogInformation("Running health check for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Running health check for device: {DeviceId}", idDevice);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<PostDeviceHealthResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
 
-                var deviceInfo = await GetCachedDeviceInfoAsync(deviceId);
+                var deviceInfo = await GetCachedDeviceInfoAsync(idDevice);
                 if (deviceInfo == null)
                 {
-                    return ApiResponse<PostDeviceHealthResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{deviceId}' not found", 404);
+                    return ApiResponse<PostDeviceHealthResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{idDevice}' not found", 404);
                 }
 
                 // Execute health check via Python worker
                 var healthCheckCommand = new
                 {
                     command = "device_health",
-                    device_id = deviceId,
+                    device_id = idDevice,
                     check_type = request.HealthCheckType ?? "comprehensive",
                     include_performance_metrics = request.IncludePerformanceMetrics
                 };
@@ -683,70 +683,70 @@ namespace DeviceOperations.Services.Device
 
                 if (result == null)
                 {
-                    _logger.LogError("Python worker health check failed for device: {DeviceId}", deviceId);
+                    _logger.LogError("Python worker health check failed for device: {DeviceId}", idDevice);
                     return ApiResponse<PostDeviceHealthResponse>.CreateError("HEALTH_CHECK_FAILED", "Health check execution failed", 500);
                 }
 
                 var healthData = result;
                 if (healthData != null)
                 {
-                    _healthCache[deviceId] = healthData;
+                    _healthCache[idDevice] = healthData;
                 }
 
                 var response = new PostDeviceHealthResponse
                 {
-                    DeviceId = deviceId,
+                    DeviceId = idDevice,
                     Health = healthData ?? new DeviceHealth { Status = "Unknown" },
                     HealthScore = 85.0, // Default score
                     Recommendations = new List<string>(),
                     Warnings = new List<string>()
                 };
 
-                _logger.LogInformation("Successfully completed health check for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Successfully completed health check for device: {DeviceId}", idDevice);
                 return ApiResponse<PostDeviceHealthResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error running health check for device: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error running health check for device: {DeviceId}", idDevice);
                 return ApiResponse<PostDeviceHealthResponse>.CreateError("HEALTH_CHECK_ERROR", "Failed to execute health check", 500);
             }
         }
 
-        public Task<ApiResponse<bool>> PostDeviceAvailabilityAsync(string deviceId, bool isAvailable)
+        public Task<ApiResponse<bool>> PostDeviceAvailabilityAsync(string idDevice, bool isAvailable)
         {
             try
             {
-                _logger.LogInformation("Setting device availability: {DeviceId} = {IsAvailable}", deviceId, isAvailable);
+                _logger.LogInformation("Setting device availability: {DeviceId} = {IsAvailable}", idDevice, isAvailable);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return Task.FromResult(ApiResponse<bool>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400));
                 }
 
-                if (_deviceCache.TryGetValue(deviceId, out var deviceInfo))
+                if (_deviceCache.TryGetValue(idDevice, out var deviceInfo))
                 {
                     deviceInfo.IsAvailable = isAvailable;
                     deviceInfo.Status = isAvailable ? DeviceStatus.Available : DeviceStatus.Offline;
                     deviceInfo.LastUpdated = DateTime.UtcNow;
                 }
 
-                _logger.LogInformation("Successfully updated device availability: {DeviceId}", deviceId);
+                _logger.LogInformation("Successfully updated device availability: {DeviceId}", idDevice);
                 return Task.FromResult(ApiResponse<bool>.CreateSuccess(isAvailable));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error setting device availability: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error setting device availability: {DeviceId}", idDevice);
                 return Task.FromResult(ApiResponse<bool>.CreateError("SET_AVAILABILITY_ERROR", "Failed to set device availability", 500));
             }
         }
 
-        public async Task<ApiResponse<PostDeviceBenchmarkResponse>> PostDeviceBenchmarkAsync(string deviceId, PostDeviceBenchmarkRequest request)
+        public async Task<ApiResponse<PostDeviceBenchmarkResponse>> PostDeviceBenchmarkAsync(string idDevice, PostDeviceBenchmarkRequest request)
         {
             try
             {
-                _logger.LogInformation("Running benchmark for device: {DeviceId}, Type: {BenchmarkType}", deviceId, request.BenchmarkType);
+                _logger.LogInformation("Running benchmark for device: {DeviceId}, Type: {BenchmarkType}", idDevice, request.BenchmarkType);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<PostDeviceBenchmarkResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
@@ -754,7 +754,7 @@ namespace DeviceOperations.Services.Device
                 var benchmarkCommand = new
                 {
                     command = "device_benchmark",
-                    device_id = deviceId,
+                    device_id = idDevice,
                     benchmark_type = request.BenchmarkType.ToString(),
                     duration_seconds = request.DurationSeconds
                 };
@@ -767,57 +767,57 @@ namespace DeviceOperations.Services.Device
 
                 if (result == null)
                 {
-                    _logger.LogError("Benchmark failed for device: {DeviceId}", deviceId);
+                    _logger.LogError("Benchmark failed for device: {DeviceId}", idDevice);
                     return ApiResponse<PostDeviceBenchmarkResponse>.CreateError("BENCHMARK_FAILED", "Device benchmark execution failed", 500);
                 }
 
                 var response = new PostDeviceBenchmarkResponse
                 {
-                    DeviceId = deviceId,
+                    DeviceId = idDevice,
                     BenchmarkType = (DeviceOperations.Models.Common.BenchmarkType)request.BenchmarkType,
                     Results = result,
                     BenchmarkAt = DateTime.UtcNow,
                     DurationSeconds = request.DurationSeconds
                 };
 
-                _logger.LogInformation("Successfully completed benchmark for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Successfully completed benchmark for device: {DeviceId}", idDevice);
                 return ApiResponse<PostDeviceBenchmarkResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error running benchmark for device: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error running benchmark for device: {DeviceId}", idDevice);
                 return ApiResponse<PostDeviceBenchmarkResponse>.CreateError("BENCHMARK_ERROR", "Failed to run device benchmark", 500);
             }
         }
 
-        public async Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(string deviceId, PostDeviceOptimizeRequest request)
+        public async Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(string idDevice, PostDeviceOptimizeRequest request)
         {
             try
             {
                 _logger.LogInformation("Optimizing device: {DeviceId}, Target: {Target}", 
-                    deviceId, request.Target);
+                    idDevice, request.Target);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<PostDeviceOptimizeResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
 
                 // Validate device exists and is available for optimization
-                if (!_deviceCache.TryGetValue(deviceId, out var deviceInfo))
+                if (!_deviceCache.TryGetValue(idDevice, out var deviceInfo))
                 {
                     await RefreshDeviceCacheAsync();
-                    if (!_deviceCache.TryGetValue(deviceId, out deviceInfo))
+                    if (!_deviceCache.TryGetValue(idDevice, out deviceInfo))
                     {
-                        _logger.LogWarning("Device not found for optimization: {DeviceId}", deviceId);
-                        return ApiResponse<PostDeviceOptimizeResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{deviceId}' not found", 404);
+                        _logger.LogWarning("Device not found for optimization: {DeviceId}", idDevice);
+                        return ApiResponse<PostDeviceOptimizeResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{idDevice}' not found", 404);
                     }
                 }
 
                 if (deviceInfo.Status != DeviceStatus.Available)
                 {
-                    _logger.LogWarning("Device not available for optimization: {DeviceId}, Status: {Status}", deviceId, deviceInfo.Status);
+                    _logger.LogWarning("Device not available for optimization: {DeviceId}, Status: {Status}", idDevice, deviceInfo.Status);
                     return ApiResponse<PostDeviceOptimizeResponse>.CreateError("DEVICE_NOT_AVAILABLE", 
-                        $"Device '{deviceId}' is not available for optimization (Status: {deviceInfo.Status})", 409);
+                        $"Device '{idDevice}' is not available for optimization (Status: {deviceInfo.Status})", 409);
                 }
 
                 // Send optimization request to Python worker with standardized format
@@ -828,13 +828,13 @@ namespace DeviceOperations.Services.Device
                     action = "optimize_device",
                     data = new
                     {
-                        device_id = deviceId,
+                        device_id = idDevice,
                         optimization_target = request.Target.ToString().ToLowerInvariant(),
                         auto_apply = request.AutoApply
                     }
                 };
 
-                _logger.LogDebug("Sending device optimization request for {DeviceId} with request ID: {RequestId}", deviceId, requestId);
+                _logger.LogDebug("Sending device optimization request for {DeviceId} with request ID: {RequestId}", idDevice, requestId);
 
                 var pythonResult = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                     PythonWorkerTypes.DEVICE,
@@ -845,7 +845,7 @@ namespace DeviceOperations.Services.Device
                 if (pythonResult == null)
                 {
                     _logger.LogError("Optimization failed for device: {DeviceId} - Python worker returned null (Request ID: {RequestId})", 
-                        deviceId, requestId);
+                        idDevice, requestId);
                     return ApiResponse<PostDeviceOptimizeResponse>.CreateError("OPTIMIZATION_FAILED", 
                         "Device optimization execution failed", 500);
                 }
@@ -854,11 +854,11 @@ namespace DeviceOperations.Services.Device
                 var optimizationResults = ParseOptimizationResults(pythonResult);
                 
                 // Collect performance metrics if optimization was applied
-                var performanceMetrics = request.AutoApply ? await CollectPerformanceMetrics(deviceId) : null;
+                var performanceMetrics = request.AutoApply ? await CollectPerformanceMetrics(idDevice) : null;
 
                 var response = new PostDeviceOptimizeResponse
                 {
-                    DeviceId = deviceId,
+                    DeviceId = idDevice,
                     Target = (DeviceOperations.Models.Common.OptimizationTarget)request.Target,
                     Results = optimizationResults,
                     Applied = request.AutoApply && optimizationResults.ConfidenceScore > 0.7, // Only apply if confident
@@ -872,13 +872,13 @@ namespace DeviceOperations.Services.Device
                     await RefreshDeviceCacheAsync();
                 }
 
-                _logger.LogInformation("Device optimization completed for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Device optimization completed for device: {DeviceId}", idDevice);
 
                 return ApiResponse<PostDeviceOptimizeResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error optimizing device: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error optimizing device: {DeviceId}", idDevice);
                 return ApiResponse<PostDeviceOptimizeResponse>.CreateError("DEVICE_OPTIMIZATION_ERROR", "Device optimization failed", 500);
             }
         }
@@ -935,7 +935,7 @@ namespace DeviceOperations.Services.Device
             }
         }
 
-        private async Task<Dictionary<string, double>?> CollectPerformanceMetrics(string deviceId)
+        private async Task<Dictionary<string, double>?> CollectPerformanceMetrics(string idDevice)
         {
             try
             {
@@ -945,7 +945,7 @@ namespace DeviceOperations.Services.Device
                 {
                     request_id = requestId,
                     action = "get_performance_metrics",
-                    data = new { device_id = deviceId }
+                    data = new { device_id = idDevice }
                 };
 
                 var pythonResult = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
@@ -967,7 +967,7 @@ namespace DeviceOperations.Services.Device
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to collect performance metrics for device: {DeviceId}", deviceId);
+                _logger.LogWarning(ex, "Failed to collect performance metrics for device: {DeviceId}", idDevice);
                 return null;
             }
         }
@@ -1022,13 +1022,13 @@ namespace DeviceOperations.Services.Device
             return recommendations.Any() ? recommendations : new List<string> { "No specific recommendations available" };
         }
 
-        public async Task<ApiResponse<GetDeviceConfigResponse>> GetDeviceConfigAsync(string deviceId)
+        public async Task<ApiResponse<GetDeviceConfigResponse>> GetDeviceConfigAsync(string idDevice)
         {
             try
             {
-                _logger.LogInformation("Getting device configuration for: {DeviceId}", deviceId);
+                _logger.LogInformation("Getting device configuration for: {DeviceId}", idDevice);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<GetDeviceConfigResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
@@ -1036,7 +1036,7 @@ namespace DeviceOperations.Services.Device
                 var configCommand = new
                 {
                     command = "get_device_config",
-                    device_id = deviceId
+                    device_id = idDevice
                 };
 
                 var result = await _pythonWorkerService.ExecuteAsync<object, Dictionary<string, object>>(
@@ -1047,7 +1047,7 @@ namespace DeviceOperations.Services.Device
 
                 if (result == null)
                 {
-                    _logger.LogError("Failed to get configuration for device: {DeviceId}", deviceId);
+                    _logger.LogError("Failed to get configuration for device: {DeviceId}", idDevice);
                     return ApiResponse<GetDeviceConfigResponse>.CreateError("CONFIG_GET_FAILED", "Failed to retrieve device configuration", 500);
                 }
 
@@ -1055,29 +1055,29 @@ namespace DeviceOperations.Services.Device
 
                 var response = new GetDeviceConfigResponse
                 {
-                    DeviceId = deviceId,
+                    DeviceId = idDevice,
                     Configuration = config,
                     Schema = new Dictionary<string, ConfigurationSchema>(),
                     LastModified = DateTime.UtcNow.AddHours(-1)
                 };
 
-                _logger.LogInformation("Successfully retrieved configuration for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Successfully retrieved configuration for device: {DeviceId}", idDevice);
                 return ApiResponse<GetDeviceConfigResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device configuration: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device configuration: {DeviceId}", idDevice);
                 return ApiResponse<GetDeviceConfigResponse>.CreateError("CONFIG_ERROR", "Failed to retrieve device configuration", 500);
             }
         }
 
-        public async Task<ApiResponse<PutDeviceConfigResponse>> PutDeviceConfigAsync(string deviceId, PutDeviceConfigRequest request)
+        public async Task<ApiResponse<PutDeviceConfigResponse>> PutDeviceConfigAsync(string idDevice, PutDeviceConfigRequest request)
         {
             try
             {
-                _logger.LogInformation("Updating device configuration for: {DeviceId}", deviceId);
+                _logger.LogInformation("Updating device configuration for: {DeviceId}", idDevice);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<PutDeviceConfigResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
@@ -1085,7 +1085,7 @@ namespace DeviceOperations.Services.Device
                 var configCommand = new
                 {
                     command = "set_device_config",
-                    device_id = deviceId,
+                    device_id = idDevice,
                     configuration = request.Configuration
                 };
 
@@ -1097,35 +1097,35 @@ namespace DeviceOperations.Services.Device
 
                 if (result == null)
                 {
-                    _logger.LogError("Failed to update configuration for device: {DeviceId}", deviceId);
+                    _logger.LogError("Failed to update configuration for device: {DeviceId}", idDevice);
                     return ApiResponse<PutDeviceConfigResponse>.CreateError("CONFIG_UPDATE_FAILED", "Failed to update device configuration", 500);
                 }
 
                 var response = new PutDeviceConfigResponse
                 {
-                    DeviceId = deviceId,
+                    DeviceId = idDevice,
                     UpdatedKeys = request.Configuration?.Keys.ToList() ?? new List<string>(),
                     FailedKeys = new List<string>(),
                     ValidationResults = new Dictionary<string, string> { { "status", "Configuration updated successfully" } }
                 };
 
-                _logger.LogInformation("Successfully updated configuration for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Successfully updated configuration for device: {DeviceId}", idDevice);
                 return ApiResponse<PutDeviceConfigResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating device configuration: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error updating device configuration: {DeviceId}", idDevice);
                 return ApiResponse<PutDeviceConfigResponse>.CreateError("CONFIG_UPDATE_ERROR", "Failed to update device configuration", 500);
             }
         }
 
-        public async Task<ApiResponse<DeviceInfo>> GetDeviceDetailsAsync(string? deviceId = null)
+        public async Task<ApiResponse<DeviceInfo>> GetDeviceDetailsAsync(string? idDevice = null)
         {
             try
             {
-                _logger.LogInformation("Getting device details for: {DeviceId}", deviceId ?? "default");
+                _logger.LogInformation("Getting device details for: {DeviceId}", idDevice ?? "default");
 
-                var targetDeviceId = deviceId ?? "default";
+                var targetDeviceId = idDevice ?? "default";
                 var deviceInfo = await GetCachedDeviceInfoAsync(targetDeviceId);
 
                 if (deviceInfo == null)
@@ -1138,18 +1138,18 @@ namespace DeviceOperations.Services.Device
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device details: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device details: {DeviceId}", idDevice);
                 return ApiResponse<DeviceInfo>.CreateError("GET_DETAILS_ERROR", "Failed to retrieve device details", 500);
             }
         }
 
-        public async Task<ApiResponse<DriverInfo>> GetDeviceDriversAsync(string? deviceId = null)
+        public async Task<ApiResponse<DriverInfo>> GetDeviceDriversAsync(string? idDevice = null)
         {
             try
             {
-                _logger.LogInformation("Getting device drivers for: {DeviceId}", deviceId ?? "default");
+                _logger.LogInformation("Getting device drivers for: {DeviceId}", idDevice ?? "default");
 
-                var targetDeviceId = deviceId ?? "default";
+                var targetDeviceId = idDevice ?? "default";
                 var deviceInfo = await GetCachedDeviceInfoAsync(targetDeviceId);
 
                 if (deviceInfo == null)
@@ -1171,30 +1171,30 @@ namespace DeviceOperations.Services.Device
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device drivers: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device drivers: {DeviceId}", idDevice);
                 return ApiResponse<DriverInfo>.CreateError("GET_DRIVERS_ERROR", "Failed to retrieve device drivers", 500);
             }
         }
 
-        public async Task<ApiResponse<GetDeviceMemoryResponse>> GetDeviceMemoryAsync(string deviceId)
+        public async Task<ApiResponse<GetDeviceMemoryResponse>> GetDeviceMemoryAsync(string idDevice)
         {
             try
             {
-                _logger.LogInformation("Getting device memory information for device: {DeviceId}", deviceId);
+                _logger.LogInformation("Getting device memory information for device: {DeviceId}", idDevice);
 
-                if (string.IsNullOrWhiteSpace(deviceId))
+                if (string.IsNullOrWhiteSpace(idDevice))
                 {
                     return ApiResponse<GetDeviceMemoryResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400);
                 }
 
                 // Validate device exists
-                if (!_deviceCache.TryGetValue(deviceId, out var deviceInfo))
+                if (!_deviceCache.TryGetValue(idDevice, out var deviceInfo))
                 {
                     await RefreshDeviceCacheAsync();
-                    if (!_deviceCache.TryGetValue(deviceId, out deviceInfo))
+                    if (!_deviceCache.TryGetValue(idDevice, out deviceInfo))
                     {
-                        _logger.LogWarning("Device not found for memory query: {DeviceId}", deviceId);
-                        return ApiResponse<GetDeviceMemoryResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{deviceId}' not found", 404);
+                        _logger.LogWarning("Device not found for memory query: {DeviceId}", idDevice);
+                        return ApiResponse<GetDeviceMemoryResponse>.CreateError("DEVICE_NOT_FOUND", $"Device with ID '{idDevice}' not found", 404);
                     }
                 }
 
@@ -1204,10 +1204,10 @@ namespace DeviceOperations.Services.Device
                 { 
                     request_id = requestId,
                     action = "get_memory_info",
-                    data = new { device_id = deviceId }
+                    data = new { device_id = idDevice }
                 };
                 
-                _logger.LogDebug("Querying device memory for {DeviceId} with request ID: {RequestId}", deviceId, requestId);
+                _logger.LogDebug("Querying device memory for {DeviceId} with request ID: {RequestId}", idDevice, requestId);
                 
                 var pythonResult = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                     PythonWorkerTypes.DEVICE,
@@ -1218,7 +1218,7 @@ namespace DeviceOperations.Services.Device
                 if (pythonResult == null)
                 {
                     _logger.LogError("Failed to retrieve memory information for device {DeviceId} - Python worker returned null (Request ID: {RequestId})", 
-                        deviceId, requestId);
+                        idDevice, requestId);
                     return ApiResponse<GetDeviceMemoryResponse>.CreateError("MEMORY_INFO_RETRIEVAL_FAILED", 
                         "Failed to retrieve memory information from device worker", 500);
                 }
@@ -1229,7 +1229,7 @@ namespace DeviceOperations.Services.Device
                 // Create response with both current usage and allocation information
                 var response = new GetDeviceMemoryResponse
                 {
-                    DeviceId = deviceId,
+                    DeviceId = idDevice,
                     DeviceName = deviceInfo.Name,
                     DeviceType = deviceInfo.Type,
                     MemoryInfo = memoryInfo,
@@ -1240,13 +1240,13 @@ namespace DeviceOperations.Services.Device
                 var totalMB = (long)(memoryInfo.TotalMemoryBytes / (1024 * 1024));
                 var availableMB = (long)(memoryInfo.AvailableMemoryBytes / (1024 * 1024));
                 _logger.LogInformation("Successfully retrieved memory information for device: {DeviceId} - Total: {TotalMB}MB, Available: {AvailableMB}MB (Request ID: {RequestId})", 
-                    deviceId, totalMB, availableMB, requestId);
+                    idDevice, totalMB, availableMB, requestId);
                 
                 return ApiResponse<GetDeviceMemoryResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device memory information for: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device memory information for: {DeviceId}", idDevice);
                 return ApiResponse<GetDeviceMemoryResponse>.CreateError("DEVICE_MEMORY_ERROR", "Failed to retrieve device memory information", 500);
             }
         }
@@ -1382,34 +1382,34 @@ namespace DeviceOperations.Services.Device
             }
         }
 
-        private async Task<DeviceInfo?> GetCachedDeviceInfoAsync(string deviceId)
+        private async Task<DeviceInfo?> GetCachedDeviceInfoAsync(string idDevice)
         {
             DeviceInfo? deviceInfo;
-            var cacheHit = TryGetCachedDevice(deviceId, out deviceInfo);
+            var cacheHit = TryGetCachedDevice(idDevice, out deviceInfo);
             
             if (!cacheHit)
             {
                 await OptimizedCacheRefreshAsync();
-                TryGetCachedDevice(deviceId, out deviceInfo);
+                TryGetCachedDevice(idDevice, out deviceInfo);
             }
             
             return deviceInfo;
         }
 
-        private async Task<DeviceCapabilities?> GetDeviceCompatibilityAsync(string deviceId)
+        private async Task<DeviceCapabilities?> GetDeviceCompatibilityAsync(string idDevice)
         {
-            if (!_capabilityCache.TryGetValue(deviceId, out var capabilities))
+            if (!_capabilityCache.TryGetValue(idDevice, out var capabilities))
             {
-                capabilities = await QueryDeviceCapabilitiesAsync(deviceId);
+                capabilities = await QueryDeviceCapabilitiesAsync(idDevice);
                 if (capabilities != null)
                 {
-                    _capabilityCache[deviceId] = capabilities;
+                    _capabilityCache[idDevice] = capabilities;
                 }
             }
             return capabilities;
         }
 
-        private async Task<DeviceCapabilities?> QueryDeviceCapabilitiesAsync(string deviceId)
+        private async Task<DeviceCapabilities?> QueryDeviceCapabilitiesAsync(string idDevice)
         {
             try
             {
@@ -1418,10 +1418,10 @@ namespace DeviceOperations.Services.Device
                 { 
                     request_id = requestId,
                     action = "get_capabilities", 
-                    data = new { device_id = deviceId }
+                    data = new { device_id = idDevice }
                 };
                 
-                _logger.LogDebug("Querying device capabilities for {DeviceId} with request ID: {RequestId}", deviceId, requestId);
+                _logger.LogDebug("Querying device capabilities for {DeviceId} with request ID: {RequestId}", idDevice, requestId);
                 
                 var result = await _pythonWorkerService.ExecuteAsync<object, DeviceCapabilities>(
                     PythonWorkerTypes.DEVICE,
@@ -1431,26 +1431,26 @@ namespace DeviceOperations.Services.Device
 
                 if (result != null)
                 {
-                    _logger.LogDebug("Successfully retrieved capabilities for {DeviceId} (Request ID: {RequestId})", deviceId, requestId);
+                    _logger.LogDebug("Successfully retrieved capabilities for {DeviceId} (Request ID: {RequestId})", idDevice, requestId);
                     return result;
                 }
                 else
                 {
-                    _logger.LogWarning("No capabilities returned for {DeviceId} (Request ID: {RequestId})", deviceId, requestId);
+                    _logger.LogWarning("No capabilities returned for {DeviceId} (Request ID: {RequestId})", idDevice, requestId);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error querying device capabilities for: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error querying device capabilities for: {DeviceId}", idDevice);
             }
             return null;
         }
 
-        private async Task<DeviceHealth?> QueryDeviceHealthAsync(string deviceId)
+        private async Task<DeviceHealth?> QueryDeviceHealthAsync(string idDevice)
         {
             try
             {
-                var healthCommand = new { command = "get_health", device_id = deviceId };
+                var healthCommand = new { command = "get_health", device_id = idDevice };
                 var result = await _pythonWorkerService.ExecuteAsync<object, DeviceHealth>(
                     PythonWorkerTypes.DEVICE,
                     JsonSerializer.Serialize(healthCommand),
@@ -1464,16 +1464,16 @@ namespace DeviceOperations.Services.Device
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error querying device health for: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error querying device health for: {DeviceId}", idDevice);
             }
             return null;
         }
 
-        private async Task<Dictionary<string, object>?> GetDeviceWorkloadAsync(string deviceId)
+        private async Task<Dictionary<string, object>?> GetDeviceWorkloadAsync(string idDevice)
         {
             try
             {
-                var workloadCommand = new { command = "get_workload", device_id = deviceId };
+                var workloadCommand = new { command = "get_workload", device_id = idDevice };
                 var result = await _pythonWorkerService.ExecuteAsync<object, Dictionary<string, object>>(
                     PythonWorkerTypes.DEVICE,
                     JsonSerializer.Serialize(workloadCommand),
@@ -1487,7 +1487,7 @@ namespace DeviceOperations.Services.Device
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting device workload for: {DeviceId}", deviceId);
+                _logger.LogError(ex, "Error getting device workload for: {DeviceId}", idDevice);
             }
             return new Dictionary<string, object>();
         }
@@ -1505,10 +1505,10 @@ namespace DeviceOperations.Services.Device
             }));
         }
 
-        public async Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(PostDeviceOptimizeRequest request, string deviceId)
+        public async Task<ApiResponse<PostDeviceOptimizeResponse>> PostDeviceOptimizeAsync(PostDeviceOptimizeRequest request, string idDevice)
         {
             // Delegate to the main implementation with correct parameter order
-            return await PostDeviceOptimizeAsync(deviceId, request);
+            return await PostDeviceOptimizeAsync(idDevice, request);
         }
 
         private DeviceInfo ConvertPythonDeviceToDeviceInfo(dynamic pythonResult)
@@ -1667,30 +1667,30 @@ namespace DeviceOperations.Services.Device
         /// <summary>
         /// Optimized cache retrieval with access tracking and expiry checking
         /// </summary>
-        private bool TryGetCachedDevice(string deviceId, out DeviceInfo? deviceInfo)
+        private bool TryGetCachedDevice(string idDevice, out DeviceInfo? deviceInfo)
         {
             lock (_cacheLock)
             {
                 deviceInfo = null;
                 
-                if (!_deviceCache.TryGetValue(deviceId, out deviceInfo))
+                if (!_deviceCache.TryGetValue(idDevice, out deviceInfo))
                 {
                     return false;
                 }
 
                 // Check if cache entry has expired
-                if (_cacheExpiryTimes.TryGetValue(deviceId, out var expiryTime) && 
+                if (_cacheExpiryTimes.TryGetValue(idDevice, out var expiryTime) && 
                     DateTime.UtcNow > expiryTime)
                 {
-                    _deviceCache.Remove(deviceId);
-                    _cacheExpiryTimes.Remove(deviceId);
-                    _cacheAccessCount.Remove(deviceId);
+                    _deviceCache.Remove(idDevice);
+                    _cacheExpiryTimes.Remove(idDevice);
+                    _cacheAccessCount.Remove(idDevice);
                     deviceInfo = null;
                     return false;
                 }
 
                 // Track access for cache optimization
-                _cacheAccessCount[deviceId] = _cacheAccessCount.GetValueOrDefault(deviceId, 0) + 1;
+                _cacheAccessCount[idDevice] = _cacheAccessCount.GetValueOrDefault(idDevice, 0) + 1;
                 
                 return true;
             }
@@ -1699,7 +1699,7 @@ namespace DeviceOperations.Services.Device
         /// <summary>
         /// Optimized cache update with automatic cleanup
         /// </summary>
-        private void UpdateDeviceCache(string deviceId, DeviceInfo deviceInfo)
+        private void UpdateDeviceCache(string idDevice, DeviceInfo deviceInfo)
         {
             lock (_cacheLock)
             {
@@ -1716,9 +1716,9 @@ namespace DeviceOperations.Services.Device
                 }
 
                 // Update cache with new expiry time
-                _deviceCache[deviceId] = deviceInfo;
-                _cacheExpiryTimes[deviceId] = DateTime.UtcNow.Add(_deviceSpecificCacheTimeout);
-                _cacheAccessCount[deviceId] = _cacheAccessCount.GetValueOrDefault(deviceId, 0) + 1;
+                _deviceCache[idDevice] = deviceInfo;
+                _cacheExpiryTimes[idDevice] = DateTime.UtcNow.Add(_deviceSpecificCacheTimeout);
+                _cacheAccessCount[idDevice] = _cacheAccessCount.GetValueOrDefault(idDevice, 0) + 1;
             }
         }
 

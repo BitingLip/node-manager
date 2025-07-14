@@ -2,7 +2,6 @@ using DeviceOperations.Models.Common;
 using DeviceOperations.Models.Requests;
 using DeviceOperations.Models.Responses;
 using DeviceOperations.Models.Postprocessing;
-using System.Runtime.CompilerServices;
 
 namespace DeviceOperations.Services.Postprocessing;
 
@@ -40,5 +39,5 @@ public interface IServicePostprocessing
     // Performance optimization features (Week 19)
     Task<ApiResponse<PostPostprocessingResponse>> ExecuteWithOptimizedConnectionAsync(PostPostprocessingRequest request);
     Task<ApiResponse<List<PostprocessingModelInfo>>> GetAvailableModelsWithCachingAsync(string? modelType = null, bool forceRefresh = false);
-    IAsyncEnumerable<PostprocessingProgressUpdate> ExecuteWithProgressStreamingAsync(PostPostprocessingRequest request, ProgressStreamingConfig? config = null, [EnumeratorCancellation] CancellationToken cancellationToken = default);
+    IAsyncEnumerable<PostprocessingProgressUpdate> ExecuteWithProgressStreamingAsync(PostPostprocessingRequest request, ProgressStreamingConfig? config = null, CancellationToken cancellationToken = default);
 }

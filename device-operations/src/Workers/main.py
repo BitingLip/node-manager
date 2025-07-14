@@ -112,41 +112,57 @@ async def initialize_workers_interface():
         logger.error("Failed to initialize Workers interface: %s", e)
         return None
 
-async def process_inference_request(interface, request_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Process a single inference request through the new interface."""
+async def process_worker_request(interface, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Process a worker request through the new interface."""
     try:
+        # Extract worker type and operation from request
+        worker_type = request_data.get("workerType", "inference")  # Default to inference for backward compatibility
+        action = request_data.get("action", request_data.get("command", ""))
+        
+        # Map action to request type based on worker type
+        if worker_type == "memory":
+            request_type = action  # memory actions are already prefixed like "memory.get_status"
+        elif worker_type == "inference":
+            request_type = "inference.generate"
+        else:
+            request_type = f"{worker_type}.{action}" if action else worker_type
+        
         # Process the request through the new hierarchical interface
         response = await interface.process_request({
-            "request_id": request_data.get("request_id", "main_request"),
-            "worker_type": "inference",
-            "operation": "generate",
-            "data": request_data
+            "request_id": request_data.get("request_id", request_data.get("correlationId", "main_request")),
+            "type": request_type,
+            "action": action,
+            "data": request_data.get("data", request_data),
+            "worker_type": worker_type
         })
         
-        if response.get("status") == "success":
+        if response.get("success", False):
             return {
                 "success": True,
-                "request_id": request_data.get("request_id", "main_request"),
+                "request_id": request_data.get("request_id", request_data.get("correlationId", "main_request")),
                 "data": response.get("data", {}),
-                "worker_info": "new_hierarchical_structure",
-                "timestamp": time.time()
+                "worker_info": f"{worker_type}_worker",
+                "timestamp": response.get("timestamp", time.time())
             }
         else:
             return {
                 "success": False,
-                "request_id": request_data.get("request_id", "main_request"),
-                "error": response.get("error", "Unknown error"),
-                "worker_info": "new_hierarchical_structure",
-                "timestamp": time.time()
+                "request_id": request_data.get("request_id", request_data.get("correlationId", "main_request")),
+                "error": response.get("error_message", response.get("error", "Unknown error")),
+                "error_code": response.get("error_code", "WORKER_ERROR"),
+                "worker_info": f"{worker_type}_worker",
+                "timestamp": response.get("timestamp", time.time())
             }
             
     except Exception as e:
         logger.error("Request processing failed: %s", e)
+        worker_type = request_data.get("workerType", "unknown")
         return {
             "success": False,
-            "request_id": request_data.get("request_id", "main_request"),
+            "request_id": request_data.get("request_id", request_data.get("correlationId", "main_request")),
             "error": f"Processing error: {str(e)}",
-            "worker_info": "new_hierarchical_structure",
+            "error_code": "PROCESSING_ERROR",
+            "worker_info": f"{worker_type}_worker",
             "timestamp": time.time()
         }
 
@@ -179,7 +195,7 @@ async def handle_communication():
                 logger.info("Processing request: %s", request_data.get("request_id", "unknown"))
                 
                 # Process through new interface
-                response = await process_inference_request(interface, request_data)
+                response = await process_worker_request(interface, request_data)
                 
                 # Send JSON response to stdout
                 print(json.dumps(response), flush=True)

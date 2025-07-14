@@ -7,7 +7,10 @@ Controls device managers through the device interface.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..device.interface_device import DeviceInterface
 from abc import ABC, abstractmethod
 
 
@@ -50,7 +53,8 @@ class DeviceInstructor(BaseInstructor):
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.device_interface = None
+        self.device_interface: Optional['DeviceInterface'] = None
+        self.device_interface: Optional['DeviceInterface'] = None
         
     async def initialize(self) -> bool:
         """Initialize device instructor and interface."""
@@ -58,7 +62,7 @@ class DeviceInstructor(BaseInstructor):
             self.logger.info("Initializing device instructor...")
             
             # Import device interface (lazy loading)
-            from ..devices.interface_device import DeviceInterface
+            from ..device.interface_device import DeviceInterface
             
             # Create device interface
             self.device_interface = DeviceInterface(self.config)
@@ -77,31 +81,79 @@ class DeviceInstructor(BaseInstructor):
             return False
     
     async def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle device-related requests."""
-        if not self.initialized:
+        """
+        Enhanced request handling with structured error management and new device actions
+        Based on Phase 4 requirement: Enhanced error propagation and missing action implementation
+        """
+        if not self.initialized or not self.device_interface:
             return {"success": False, "error": "Device instructor not initialized"}
         
         try:
-            request_type = request.get("type", "")
+            action = request.get("action", "")
             request_id = request.get("request_id", "")
             
-            self.logger.info("Handling device request: %s", request_type)
+            self.logger.info("Handling device action: %s", action)
             
-            # Route to device interface
-            if request_type == "device.get_info":
-                return await self.device_interface.get_device_info(request)
-            elif request_type == "device.list_devices":
+            # Validate action
+            if not action:
+                return {
+                    "success": False,
+                    "error": "Action is required",
+                    "error_code": "INVALID_ACTION",
+                    "request_id": request_id
+                }
+            
+            # Route to appropriate handler
+            if action == "list_devices":
                 return await self.device_interface.list_devices(request)
-            elif request_type == "device.set_device":
+            elif action == "get_device":
+                return await self.device_interface.get_device_info(request)
+            elif action == "set_device":
                 return await self.device_interface.set_device(request)
-            elif request_type == "device.get_memory_info":
+            elif action == "get_memory_info":
                 return await self.device_interface.get_memory_info(request)
-            elif request_type == "device.optimize_settings":
+            elif action == "optimize_device":
+                return await self.device_interface.optimize_settings(request)
+            
+            # NEW Phase 4 Week 1 Actions: Device capabilities discovery and status monitoring
+            elif action == "get_capabilities":
+                device_id = request.get("data", {}).get("device_id")
+                if not device_id:
+                    return {
+                        "success": False,
+                        "error": "Device ID required for capabilities",
+                        "error_code": "INVALID_DEVICE_ID",
+                        "request_id": request_id
+                    }
+                return await self.device_interface.get_device_capabilities(request)
+                
+            elif action == "get_device_status":
+                device_id = request.get("data", {}).get("device_id")
+                if not device_id:
+                    return {
+                        "success": False,
+                        "error": "Device ID required for status",
+                        "error_code": "INVALID_DEVICE_ID", 
+                        "request_id": request_id
+                    }
+                return await self.device_interface.get_device_status(request)
+            
+            # Legacy request type support (for backward compatibility)
+            elif action == "device.get_info":
+                return await self.device_interface.get_device_info(request)
+            elif action == "device.list_devices":
+                return await self.device_interface.list_devices(request)
+            elif action == "device.set_device":
+                return await self.device_interface.set_device(request)
+            elif action == "device.get_memory_info":
+                return await self.device_interface.get_memory_info(request)
+            elif action == "device.optimize_settings":
                 return await self.device_interface.optimize_settings(request)
             else:
                 return {
                     "success": False,
-                    "error": f"Unknown device request type: {request_type}",
+                    "error": f"Unknown device action: {action}",
+                    "error_code": "UNKNOWN_ACTION",
                     "request_id": request_id
                 }
                 
@@ -109,7 +161,8 @@ class DeviceInstructor(BaseInstructor):
             self.logger.error("Device request handling failed: %s", e)
             return {
                 "success": False,
-                "error": str(e),
+                "error": f"Unexpected device operation error: {str(e)}",
+                "error_code": "UNKNOWN_ERROR",
                 "request_id": request.get("request_id", "")
             }
     

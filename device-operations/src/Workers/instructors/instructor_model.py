@@ -29,7 +29,7 @@ class ModelInstructor(BaseInstructor):
             self.logger.info("Initializing model instructor...")
             
             # Import model interface (lazy loading)
-            from ..models.interface_model import ModelInterface
+            from ..model.interface_model import ModelInterface
             
             # Create model interface
             self.model_interface = ModelInterface(self.config)
@@ -48,7 +48,7 @@ class ModelInstructor(BaseInstructor):
             return False
     
     async def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle model-related requests."""
+        """Handle model-related requests with perfect C# endpoint alignment."""
         if not self.initialized:
             return {"success": False, "error": "Model instructor not initialized"}
         
@@ -58,23 +58,65 @@ class ModelInstructor(BaseInstructor):
             
             self.logger.info(f"Handling model request: {request_type}")
             
-            # Route to model interface
-            if request_type == "model.load_model":
-                return await self.model_interface.load_model(request)
-            elif request_type == "model.unload_model":
-                return await self.model_interface.unload_model(request)
-            elif request_type == "model.get_model_info":
-                return await self.model_interface.get_model_info(request)
-            elif request_type == "model.optimize_memory":
-                return await self.model_interface.optimize_memory(request)
-            elif request_type == "model.load_vae":
-                return await self.model_interface.load_vae(request)
-            elif request_type == "model.load_lora":
-                return await self.model_interface.load_lora(request)
-            elif request_type == "model.load_encoder":
-                return await self.model_interface.load_encoder(request)
-            elif request_type == "model.load_unet":
-                return await self.model_interface.load_unet(request)
+            # ALIGNED COMMANDS: Perfect 1:1 mapping with C# endpoints
+            # Core model operations
+            if request_type == "model.get_model":                    # Maps to GetModel
+                return await self.model_interface.get_model(request)
+            elif request_type == "model.post_model_load":            # Maps to PostModelLoad
+                return await self.model_interface.post_model_load(request)
+            elif request_type == "model.post_model_unload":          # Maps to PostModelUnload
+                return await self.model_interface.post_model_unload(request)
+            elif request_type == "model.delete_model":              # Maps to DeleteModel
+                return await self.model_interface.delete_model(request)
+            elif request_type == "model.get_model_status":          # Maps to GetModelStatus
+                return await self.model_interface.get_model_status(request)
+            
+            # Model optimization and validation
+            elif request_type == "model.post_model_optimize":       # Maps to PostModelOptimize
+                return await self.model_interface.post_model_optimize(request)
+            elif request_type == "model.post_model_validate":       # Maps to PostModelValidate
+                return await self.model_interface.post_model_validate(request)
+            elif request_type == "model.post_model_benchmark":      # Maps to PostModelBenchmark
+                return await self.model_interface.post_model_benchmark(request)
+            elif request_type == "model.get_model_benchmark_results": # Maps to GetModelBenchmarkResults
+                return await self.model_interface.get_model_benchmark_results(request)
+            
+            # Model metadata operations
+            elif request_type == "model.get_model_metadata":        # Maps to GetModelMetadata
+                return await self.model_interface.get_model_metadata(request)
+            elif request_type == "model.put_model_metadata":        # Maps to PutModelMetadata
+                return await self.model_interface.put_model_metadata(request)
+            elif request_type == "model.get_model_config":          # Maps to GetModelConfig
+                return await self.model_interface.get_model_config(request)
+            elif request_type == "model.post_model_config_update":  # Maps to PostModelConfigUpdate
+                return await self.model_interface.post_model_config_update(request)
+            
+            # Model conversion and processing
+            elif request_type == "model.post_model_convert":        # Maps to PostModelConvert
+                return await self.model_interface.post_model_convert(request)
+            elif request_type == "model.post_model_preload":        # Maps to PostModelPreload
+                return await self.model_interface.post_model_preload(request)
+            elif request_type == "model.post_model_share":          # Maps to PostModelShare
+                return await self.model_interface.post_model_share(request)
+            
+            # Cache and VRAM operations
+            elif request_type == "model.get_model_cache":           # Maps to GetModelCache
+                return await self.model_interface.get_model_cache(request)
+            elif request_type == "model.post_model_cache":          # Maps to PostModelCache
+                return await self.model_interface.post_model_cache(request)
+            elif request_type == "model.delete_model_cache":        # Maps to DeleteModelCache
+                return await self.model_interface.delete_model_cache(request)
+            elif request_type == "model.post_model_vram_load":      # Maps to PostModelVramLoad
+                return await self.model_interface.post_model_vram_load(request)
+            elif request_type == "model.delete_model_vram_unload":  # Maps to DeleteModelVramUnload
+                return await self.model_interface.delete_model_vram_unload(request)
+            
+            # Discovery and availability operations
+            elif request_type == "model.get_available_models":      # Maps to GetAvailableModels
+                return await self.model_interface.get_available_models(request)
+            elif request_type == "model.get_model_components":      # Maps to GetModelComponents
+                return await self.model_interface.get_model_components(request)
+            
             else:
                 return {
                     "success": False,

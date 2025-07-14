@@ -70,20 +70,20 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public async Task<ApiResponse<GetModelResponse>> GetModelAsync(string idModel)
+        public async Task<ApiResponse<GetModelResponse>> GetModelAsync(string modelId)
         {
             try
             {
-                _logger.LogInformation($"Getting model information for: {idModel}");
+                _logger.LogInformation($"Getting model information for: {modelId}");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<GetModelResponse>.CreateError("INVALID_MODEL_ID", "Model ID cannot be null or empty");
 
                 await RefreshModelCacheAsync();
 
-                if (!_modelCache.TryGetValue(idModel, out var modelInfo))
+                if (!_modelCache.TryGetValue(modelId, out var modelInfo))
                 {
-                    var pythonRequest = new { model_id = idModel, action = "get_model_info" };
+                    var pythonRequest = new { model_id = modelId, action = "get_model_info" };
                     var pythonResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
                         PythonWorkerTypes.MODEL, "get_model", pythonRequest);
 
@@ -93,33 +93,33 @@ namespace DeviceOperations.Services.Model
                         if (model != null)
                         {
                             modelInfo = CreateModelInfoFromPython(model);
-                            _modelCache[idModel] = modelInfo;
+                            _modelCache[modelId] = modelInfo;
                         }
                     }
                     else
                     {
-                        return ApiResponse<GetModelResponse>.CreateError("MODEL_NOT_FOUND", $"Model '{idModel}' not found");
+                        return ApiResponse<GetModelResponse>.CreateError("MODEL_NOT_FOUND", $"Model '{modelId}' not found");
                     }
                 }
 
-                var isLoaded = _loadedModels.ContainsKey(idModel) && _loadedModels[idModel];
+                var isLoaded = _loadedModels.ContainsKey(modelId) && _loadedModels[modelId];
 
                 var response = new GetModelResponse
                 {
                     Model = modelInfo ?? new ModelInfo
                     {
-                        Id = idModel,
+                        Id = modelId,
                         Name = "Unknown Model",
                         Status = ModelStatus.Missing
                     }
                 };
 
-                _logger.LogInformation($"Successfully retrieved model information for: {idModel}");
+                _logger.LogInformation($"Successfully retrieved model information for: {modelId}");
                 return ApiResponse<GetModelResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to get model: {idModel}");
+                _logger.LogError(ex, $"Failed to get model: {modelId}");
                 return ApiResponse<GetModelResponse>.CreateError("MODEL_GET_ERROR", $"Failed to get model: {ex.Message}");
             }
         }
@@ -239,11 +239,11 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public async Task<ApiResponse<GetModelStatusResponse>> GetModelStatusAsync(string idDevice)
+        public async Task<ApiResponse<GetModelStatusResponse>> GetModelStatusAsync(string deviceId)
         {
             try
             {
-                _logger.LogInformation($"Getting model status for device: {idDevice}");
+                _logger.LogInformation($"Getting model status for device: {deviceId}");
 
                 await RefreshModelCacheAsync();
 
@@ -255,7 +255,7 @@ namespace DeviceOperations.Services.Model
                     {
                         ModelId = kvp.Key,
                         ModelName = _modelCache.ContainsKey(kvp.Key) ? _modelCache[kvp.Key].Name : kvp.Key,
-                        DeviceId = Guid.Parse(idDevice),
+                        DeviceId = Guid.Parse(deviceId),
                         LoadedAt = DateTime.UtcNow.AddMinutes(-Random.Shared.Next(1, 60)),
                         MemoryUsed = Random.Shared.NextInt64(1000000000, 8000000000),
                         Status = "Loaded"
@@ -266,7 +266,7 @@ namespace DeviceOperations.Services.Model
                     LoadedModels = deviceLoadedModels,
                     Status = new Dictionary<string, object>
                     {
-                        ["DeviceId"] = idDevice,
+                        ["DeviceId"] = deviceId,
                         ["TotalModels"] = totalModels,
                         ["LoadedCount"] = deviceModels,
                         ["CachedCount"] = _modelCache.Count,
@@ -285,28 +285,28 @@ namespace DeviceOperations.Services.Model
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to get model status for device: {idDevice}");
+                _logger.LogError(ex, $"Failed to get model status for device: {deviceId}");
                 return ApiResponse<GetModelStatusResponse>.CreateError("MODEL_STATUS_DEVICE_ERROR", $"Failed to get model status for device: {ex.Message}");
             }
         }
 
-        public async Task<ApiResponse<PostModelLoadResponse>> PostModelLoadAsync(string idModel, PostModelLoadRequest request)
+        public async Task<ApiResponse<PostModelLoadResponse>> PostModelLoadAsync(string modelId, PostModelLoadRequest request)
         {
             try
             {
-                _logger.LogInformation($"Loading model: {idModel} - Coordinating C# RAM cache → Python VRAM loading");
+                _logger.LogInformation($"Loading model: {modelId} - Coordinating C# RAM cache → Python VRAM loading");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<PostModelLoadResponse>.CreateError("INVALID_MODEL_ID", "Model ID cannot be null or empty");
 
                 if (request == null)
                     return ApiResponse<PostModelLoadResponse>.CreateError("INVALID_REQUEST", "Load request cannot be null");
 
                 // Check if model is already loaded in VRAM
-                if (_loadedModels.ContainsKey(idModel) && _loadedModels[idModel])
+                if (_loadedModels.ContainsKey(modelId) && _loadedModels[modelId])
                 {
-                    _logger.LogWarning($"Model '{idModel}' is already loaded in VRAM");
-                    return ApiResponse<PostModelLoadResponse>.CreateError("MODEL_ALREADY_LOADED", $"Model '{idModel}' is already loaded in VRAM");
+                    _logger.LogWarning($"Model '{modelId}' is already loaded in VRAM");
+                    return ApiResponse<PostModelLoadResponse>.CreateError("MODEL_ALREADY_LOADED", $"Model '{modelId}' is already loaded in VRAM");
                 }
 
                 // WEEK 11 ENHANCEMENT: Coordinate RAM cache → VRAM loading
@@ -315,12 +315,12 @@ namespace DeviceOperations.Services.Model
                 long loadStartTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
                 // Step 1: Check if model is in RAM cache
-                if (_ramCache.ContainsKey(idModel))
+                if (_ramCache.ContainsKey(modelId))
                 {
-                    var cacheEntry = _ramCache[idModel];
+                    var cacheEntry = _ramCache[modelId];
                     if (cacheEntry.Status == ModelCacheStatus.Cached)
                     {
-                        _logger.LogInformation($"Model {idModel} found in RAM cache, using cached version for VRAM loading");
+                        _logger.LogInformation($"Model {modelId} found in RAM cache, using cached version for VRAM loading");
                         modelPath = cacheEntry.FilePath; // Use cached model path
                         usedCachedModel = true;
                         
@@ -332,24 +332,24 @@ namespace DeviceOperations.Services.Model
                 else
                 {
                     // Step 2: If not in cache, try to load to RAM cache first for optimization
-                    _logger.LogInformation($"Model {idModel} not in RAM cache, attempting to cache for optimized VRAM loading");
+                    _logger.LogInformation($"Model {modelId} not in RAM cache, attempting to cache for optimized VRAM loading");
                     try
                     {
-                        var cacheResult = await LoadModelToRAMCacheAsync(idModel);
-                        if (cacheResult.Success && _ramCache.ContainsKey(idModel))
+                        var cacheResult = await LoadModelToRAMCacheAsync(modelId);
+                        if (cacheResult.Success && _ramCache.ContainsKey(modelId))
                         {
-                            var cacheEntry = _ramCache[idModel];
+                            var cacheEntry = _ramCache[modelId];
                             if (cacheEntry.Status == ModelCacheStatus.Cached)
                             {
                                 modelPath = cacheEntry.FilePath;
                                 usedCachedModel = true;
-                                _logger.LogInformation($"Successfully cached model {idModel} to RAM before VRAM loading");
+                                _logger.LogInformation($"Successfully cached model {modelId} to RAM before VRAM loading");
                             }
                         }
                     }
                     catch (Exception cacheEx)
                     {
-                        _logger.LogWarning(cacheEx, $"Failed to cache model {idModel} to RAM, proceeding with direct VRAM loading");
+                        _logger.LogWarning(cacheEx, $"Failed to cache model {modelId} to RAM, proceeding with direct VRAM loading");
                         // Continue with original path - not a blocking error
                     }
                 }
@@ -358,7 +358,7 @@ namespace DeviceOperations.Services.Model
                 var pythonRequest = new
                 {
                     request_id = Guid.NewGuid().ToString(),
-                    model_id = idModel,
+                    model_id = modelId,
                     model_path = modelPath,
                     model_type = request.ModelType.ToString(),
                     device_id = request.DeviceId.ToString(),
@@ -373,14 +373,14 @@ namespace DeviceOperations.Services.Model
 
                 if (pythonResponse?.success == true)
                 {
-                    _loadedModels[idModel] = true;
+                    _loadedModels[modelId] = true;
                     long loadEndTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     long totalLoadTime = loadEndTime - loadStartTime;
 
                     var response = new PostModelLoadResponse
                     {
                         Success = true,
-                        ModelId = idModel,
+                        ModelId = modelId,
                         LoadSessionId = Guid.NewGuid(),
                         LoadTime = TimeSpan.FromMilliseconds(totalLoadTime),
                         MemoryUsed = pythonResponse.memory_usage ?? Random.Shared.NextInt64(1000000000, 8000000000),
@@ -398,41 +398,41 @@ namespace DeviceOperations.Services.Model
                         }
                     };
 
-                    _logger.LogInformation($"Successfully loaded model: {idModel} on device: {request.DeviceId} (Cache optimized: {usedCachedModel})");
+                    _logger.LogInformation($"Successfully loaded model: {modelId} on device: {request.DeviceId} (Cache optimized: {usedCachedModel})");
                     return ApiResponse<PostModelLoadResponse>.CreateSuccess(response);
                 }
                 else
                 {
                     var error = pythonResponse?.error ?? "Unknown error occurred";
-                    _logger.LogError($"Failed to load model {idModel}: {error}");
+                    _logger.LogError($"Failed to load model {modelId}: {error}");
                     return ApiResponse<PostModelLoadResponse>.CreateError("MODEL_LOAD_FAILED", $"Failed to load model: {error}");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to load model: {idModel}");
+                _logger.LogError(ex, $"Failed to load model: {modelId}");
                 return ApiResponse<PostModelLoadResponse>.CreateError("MODEL_LOAD_EXCEPTION", $"Failed to load model: {ex.Message}");
             }
         }
 
-        public async Task<ApiResponse<PostModelUnloadResponse>> PostModelUnloadAsync(string idModel, PostModelUnloadRequest request)
+        public async Task<ApiResponse<PostModelUnloadResponse>> PostModelUnloadAsync(string modelId, PostModelUnloadRequest request)
         {
             try
             {
-                _logger.LogInformation($"Unloading model: {idModel}");
+                _logger.LogInformation($"Unloading model: {modelId}");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<PostModelUnloadResponse>.CreateError("INVALID_MODEL_ID", "Model ID cannot be null or empty");
 
-                if (!_loadedModels.ContainsKey(idModel) || !_loadedModels[idModel])
+                if (!_loadedModels.ContainsKey(modelId) || !_loadedModels[modelId])
                 {
-                    _logger.LogWarning($"Model '{idModel}' is not currently loaded");
-                    return ApiResponse<PostModelUnloadResponse>.CreateError("MODEL_NOT_LOADED", $"Model '{idModel}' is not currently loaded");
+                    _logger.LogWarning($"Model '{modelId}' is not currently loaded");
+                    return ApiResponse<PostModelUnloadResponse>.CreateError("MODEL_NOT_LOADED", $"Model '{modelId}' is not currently loaded");
                 }
 
                 var pythonRequest = new
                 {
-                    model_id = idModel,
+                    model_id = modelId,
                     device_id = request?.DeviceId.ToString(),
                     force_unload = request?.Force ?? false,
                     action = "unload_model"
@@ -443,38 +443,38 @@ namespace DeviceOperations.Services.Model
 
                 if (pythonResponse?.success == true)
                 {
-                    _loadedModels[idModel] = false;
+                    _loadedModels[modelId] = false;
 
                     var response = new PostModelUnloadResponse
                     {
                         Success = true,
-                        Message = $"Model '{idModel}' successfully unloaded"
+                        Message = $"Model '{modelId}' successfully unloaded"
                     };
 
-                    _logger.LogInformation($"Successfully unloaded model: {idModel}");
+                    _logger.LogInformation($"Successfully unloaded model: {modelId}");
                     return ApiResponse<PostModelUnloadResponse>.CreateSuccess(response);
                 }
                 else
                 {
                     var error = pythonResponse?.error ?? "Unknown error occurred";
-                    _logger.LogError($"Failed to unload model {idModel}: {error}");
+                    _logger.LogError($"Failed to unload model {modelId}: {error}");
                     return ApiResponse<PostModelUnloadResponse>.CreateError("UNLOAD_FAILED", $"Failed to unload model: {error}", 500);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to unload model: {idModel}");
+                _logger.LogError(ex, $"Failed to unload model: {modelId}");
                 return ApiResponse<PostModelUnloadResponse>.CreateError("UNLOAD_ERROR", $"Failed to unload model: {ex.Message}", 500);
             }
         }
 
-        public async Task<ApiResponse<PostModelValidateResponse>> PostModelValidateAsync(string idModel, PostModelValidateRequest request)
+        public async Task<ApiResponse<PostModelValidateResponse>> PostModelValidateAsync(string modelId, PostModelValidateRequest request)
         {
             try
             {
-                _logger.LogInformation($"Validating model with real file validation: {idModel}");
+                _logger.LogInformation($"Validating model with real file validation: {modelId}");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<PostModelValidateResponse>.CreateError("INVALID_MODEL_ID", "Model ID cannot be null or empty", 400);
 
                 // WEEK 12 ENHANCEMENT: Real file validation using filesystem discovery + cache integration
@@ -486,15 +486,15 @@ namespace DeviceOperations.Services.Model
                 ModelInfo? modelInfo = null;
                 await RefreshModelCacheAsync();
                 
-                if (_modelCache.ContainsKey(idModel))
+                if (_modelCache.ContainsKey(modelId))
                 {
-                    modelInfo = _modelCache[idModel];
+                    modelInfo = _modelCache[modelId];
                     validationReport["model_discovered"] = true;
                     validationReport["model_path"] = modelInfo.FilePath;
                 }
                 else
                 {
-                    issues.Add($"Model {idModel} not found in discovery cache");
+                    issues.Add($"Model {modelId} not found in discovery cache");
                     isValid = false;
                     validationReport["model_discovered"] = false;
                 }
@@ -536,9 +536,9 @@ namespace DeviceOperations.Services.Model
                         }
 
                         // Checksum validation if in cache
-                        if (_ramCache.ContainsKey(idModel))
+                        if (_ramCache.ContainsKey(modelId))
                         {
-                            var cacheEntry = _ramCache[idModel];
+                            var cacheEntry = _ramCache[modelId];
                             validationReport["cached"] = true;
                             validationReport["cache_status"] = cacheEntry.Status.ToString();
                             validationReport["cache_access_count"] = cacheEntry.AccessCount;
@@ -550,7 +550,7 @@ namespace DeviceOperations.Services.Model
                 var pythonRequest = new
                 {
                     request_id = Guid.NewGuid().ToString(),
-                    model_id = idModel,
+                    model_id = modelId,
                     model_path = modelInfo?.FilePath,
                     validation_level = request?.ValidationLevel ?? "comprehensive",
                     device_id = request?.DeviceId.ToString(),
@@ -560,7 +560,7 @@ namespace DeviceOperations.Services.Model
                         file_exists = modelInfo != null && File.Exists(modelInfo.FilePath),
                         file_size = modelInfo != null && File.Exists(modelInfo.FilePath) ? new FileInfo(modelInfo.FilePath).Length : 0,
                         model_type = modelInfo?.Type.ToString(),
-                        cache_available = _ramCache.ContainsKey(idModel)
+                        cache_available = _ramCache.ContainsKey(modelId)
                     }
                 };
 
@@ -597,7 +597,7 @@ namespace DeviceOperations.Services.Model
                 }
                 catch (Exception pythonEx)
                 {
-                    _logger.LogWarning(pythonEx, $"Python validation failed for model {idModel}, using C# validation only");
+                    _logger.LogWarning(pythonEx, $"Python validation failed for model {modelId}, using C# validation only");
                     issues.Add($"Python validation unavailable: {pythonEx.Message}");
                     validationReport["python_validation"] = "unavailable";
                 }
@@ -613,23 +613,23 @@ namespace DeviceOperations.Services.Model
                     ValidationErrors = issues
                 };
 
-                _logger.LogInformation($"Model validation completed for: {idModel}, Valid: {isValid}");
+                _logger.LogInformation($"Model validation completed for: {modelId}, Valid: {isValid}");
                 return ApiResponse<PostModelValidateResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to validate model: {idModel}");
+                _logger.LogError(ex, $"Failed to validate model: {modelId}");
                 return ApiResponse<PostModelValidateResponse>.CreateError("VALIDATION_ERROR", $"Failed to validate model: {ex.Message}", 500);
             }
         }
 
-        public async Task<ApiResponse<PostModelOptimizeResponse>> PostModelOptimizeAsync(string idModel, PostModelOptimizeRequest request)
+        public async Task<ApiResponse<PostModelOptimizeResponse>> PostModelOptimizeAsync(string modelId, PostModelOptimizeRequest request)
         {
             try
             {
-                _logger.LogInformation($"Coordinated model optimization: {idModel} - C# cache + Python VRAM coordination");
+                _logger.LogInformation($"Coordinated model optimization: {modelId} - C# cache + Python VRAM coordination");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<PostModelOptimizeResponse>.CreateError("INVALID_MODEL_ID", "Model ID cannot be null or empty", 400);
 
                 // WEEK 11 ENHANCEMENT: Coordinated optimization between C# cache and Python VRAM
@@ -651,9 +651,9 @@ namespace DeviceOperations.Services.Model
 
                 // Step 2: Check if model is in cache and update access pattern
                 bool modelInCache = false;
-                if (_ramCache.ContainsKey(idModel))
+                if (_ramCache.ContainsKey(modelId))
                 {
-                    var cacheEntry = _ramCache[idModel];
+                    var cacheEntry = _ramCache[modelId];
                     cacheEntry.LastAccessed = DateTime.UtcNow;
                     cacheEntry.AccessCount++;
                     modelInCache = true;
@@ -665,7 +665,7 @@ namespace DeviceOperations.Services.Model
                 var pythonRequest = new
                 {
                     request_id = Guid.NewGuid().ToString(),
-                    model_id = idModel,
+                    model_id = modelId,
                     optimization_target = request?.Target.ToString() ?? "performance",
                     device_id = request?.DeviceId.ToString(),
                     action = "optimize_model",
@@ -704,36 +704,36 @@ namespace DeviceOperations.Services.Model
                         Message = $"Coordinated model optimization completed successfully (Cache: {modelInCache}, Memory pressure: {memoryPressureDetected}). Report: {string.Join(", ", optimizationReport.Select(kvp => $"{kvp.Key}={kvp.Value}"))}"
                     };
 
-                    _logger.LogInformation($"Successfully optimized model: {idModel} with coordination (Cache utilized: {modelInCache})");
+                    _logger.LogInformation($"Successfully optimized model: {modelId} with coordination (Cache utilized: {modelInCache})");
                     return ApiResponse<PostModelOptimizeResponse>.CreateSuccess(response);
                 }
                 else
                 {
                     var error = pythonResponse?.error ?? "Unknown error occurred";
                     optimizationReport["python_error"] = error;
-                    _logger.LogError($"Failed to optimize model {idModel}: {error}");
+                    _logger.LogError($"Failed to optimize model {modelId}: {error}");
                     return ApiResponse<PostModelOptimizeResponse>.CreateError("OPTIMIZATION_FAILED", $"Failed to optimize model: {error}", 500);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to optimize model: {idModel}");
+                _logger.LogError(ex, $"Failed to optimize model: {modelId}");
                 return ApiResponse<PostModelOptimizeResponse>.CreateError("OPTIMIZATION_ERROR", $"Failed to optimize model: {ex.Message}", 500);
             }
         }
 
-        public async Task<ApiResponse<PostModelBenchmarkResponse>> PostModelBenchmarkAsync(string idModel, PostModelBenchmarkRequest request)
+        public async Task<ApiResponse<PostModelBenchmarkResponse>> PostModelBenchmarkAsync(string modelId, PostModelBenchmarkRequest request)
         {
             try
             {
-                _logger.LogInformation($"Benchmarking model: {idModel}");
+                _logger.LogInformation($"Benchmarking model: {modelId}");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<PostModelBenchmarkResponse>.CreateError("INVALID_MODEL_ID", "Model ID cannot be null or empty", 400);
 
                 var pythonRequest = new
                 {
-                    model_id = idModel,
+                    model_id = modelId,
                     benchmark_type = request?.BenchmarkType.ToString() ?? "Performance",
                     device_id = request?.DeviceId.ToString(),
                     action = "benchmark_model"
@@ -748,7 +748,7 @@ namespace DeviceOperations.Services.Model
                     {
                         BenchmarkResults = new Dictionary<string, object>
                         {
-                            ["ModelId"] = idModel,
+                            ["ModelId"] = modelId,
                             ["BenchmarkType"] = request?.BenchmarkType.ToString() ?? "Performance",
                             ["AverageInferenceTime"] = pythonResponse.avg_inference_time ?? Random.Shared.Next(50, 500),
                             ["MinInferenceTime"] = pythonResponse.min_inference_time ?? Random.Shared.Next(30, 200),
@@ -761,13 +761,13 @@ namespace DeviceOperations.Services.Model
                         }
                     };
 
-                    _logger.LogInformation($"Successfully benchmarked model: {idModel}");
+                    _logger.LogInformation($"Successfully benchmarked model: {modelId}");
                     return ApiResponse<PostModelBenchmarkResponse>.CreateSuccess(response);
                 }
                 else
                 {
                     var error = pythonResponse?.error ?? "Unknown error occurred";
-                    _logger.LogError($"Failed to benchmark model {idModel}: {error}");
+                    _logger.LogError($"Failed to benchmark model {modelId}: {error}");
                     return ApiResponse<PostModelBenchmarkResponse>.CreateError(new ErrorDetails
                     {
                         Code = "MODEL_BENCHMARK_FAILED",
@@ -778,7 +778,7 @@ namespace DeviceOperations.Services.Model
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to benchmark model: {idModel}");
+                _logger.LogError(ex, $"Failed to benchmark model: {modelId}");
                 return ApiResponse<PostModelBenchmarkResponse>.CreateError(new ErrorDetails
                 {
                     Code = "MODEL_BENCHMARK_ERROR", 
@@ -844,13 +844,13 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public async Task<ApiResponse<GetModelMetadataResponse>> GetModelMetadataAsync(string idModel)
+        public async Task<ApiResponse<GetModelMetadataResponse>> GetModelMetadataAsync(string modelId)
         {
             try
             {
-                _logger.LogInformation($"Getting model metadata for: {idModel}");
+                _logger.LogInformation($"Getting model metadata for: {modelId}");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<GetModelMetadataResponse>.CreateError(new ErrorDetails
                     {
                         Code = "INVALID_MODEL_ID",
@@ -861,17 +861,17 @@ namespace DeviceOperations.Services.Model
                 // Use Week 9 filesystem discovery for real metadata extraction
                 await RefreshModelCacheAsync();
 
-                if (!_modelCache.ContainsKey(idModel))
+                if (!_modelCache.ContainsKey(modelId))
                 {
                     return ApiResponse<GetModelMetadataResponse>.CreateError(new ErrorDetails
                     {
                         Code = "MODEL_NOT_FOUND",
-                        Message = $"Model {idModel} not found in filesystem discovery",
+                        Message = $"Model {modelId} not found in filesystem discovery",
                         StatusCode = (int)System.Net.HttpStatusCode.NotFound
                     });
                 }
 
-                var modelInfo = _modelCache[idModel];
+                var modelInfo = _modelCache[modelId];
                 var metadata = await ExtractRealModelMetadata(modelInfo);
 
                 var response = new GetModelMetadataResponse
@@ -879,12 +879,12 @@ namespace DeviceOperations.Services.Model
                     Metadata = metadata
                 };
 
-                _logger.LogInformation($"Successfully retrieved metadata for model: {idModel}");
+                _logger.LogInformation($"Successfully retrieved metadata for model: {modelId}");
                 return ApiResponse<GetModelMetadataResponse>.CreateSuccess(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to get model metadata: {idModel}");
+                _logger.LogError(ex, $"Failed to get model metadata: {modelId}");
                 return ApiResponse<GetModelMetadataResponse>.CreateError(new ErrorDetails
                 {
                     Code = "MODEL_METADATA_ERROR",
@@ -894,13 +894,13 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public async Task<ApiResponse<PutModelMetadataResponse>> PutModelMetadataAsync(string idModel, PutModelMetadataRequest request)
+        public async Task<ApiResponse<PutModelMetadataResponse>> PutModelMetadataAsync(string modelId, PutModelMetadataRequest request)
         {
             try
             {
-                _logger.LogInformation($"Updating model metadata for: {idModel}");
+                _logger.LogInformation($"Updating model metadata for: {modelId}");
 
-                if (string.IsNullOrWhiteSpace(idModel))
+                if (string.IsNullOrWhiteSpace(modelId))
                     return ApiResponse<PutModelMetadataResponse>.CreateError(new ErrorDetails
                     {
                         Code = "INVALID_MODEL_ID",
@@ -918,7 +918,7 @@ namespace DeviceOperations.Services.Model
 
                 var pythonRequest = new
                 {
-                    model_id = idModel,
+                    model_id = modelId,
                     metadata = request.Metadata,
                     action = "update_metadata"
                 };
@@ -934,13 +934,13 @@ namespace DeviceOperations.Services.Model
                         Message = "Model metadata updated successfully"
                     };
 
-                    _logger.LogInformation($"Successfully updated metadata for model: {idModel}");
+                    _logger.LogInformation($"Successfully updated metadata for model: {modelId}");
                     return ApiResponse<PutModelMetadataResponse>.CreateSuccess(response);
                 }
                 else
                 {
                     var error = pythonResponse?.error ?? "Unknown error occurred";
-                    _logger.LogError($"Failed to update model metadata {idModel}: {error}");
+                    _logger.LogError($"Failed to update model metadata {modelId}: {error}");
                     return ApiResponse<PutModelMetadataResponse>.CreateError(new ErrorDetails
                     {
                         Code = "METADATA_UPDATE_FAILED",
@@ -951,7 +951,7 @@ namespace DeviceOperations.Services.Model
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to update model metadata: {idModel}");
+                _logger.LogError(ex, $"Failed to update model metadata: {modelId}");
                 return ApiResponse<PutModelMetadataResponse>.CreateError(new ErrorDetails
                 {
                     Code = "METADATA_UPDATE_ERROR",
@@ -1092,11 +1092,11 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public Task<ApiResponse<PostModelLoadResponse>> PostModelLoadAsync(PostModelLoadRequest request, string idDevice)
+        public Task<ApiResponse<PostModelLoadResponse>> PostModelLoadAsync(PostModelLoadRequest request, string deviceId)
         {
             try
             {
-                _logger.LogInformation("Loading model configuration on device: {DeviceId}", idDevice);
+                _logger.LogInformation("Loading model configuration on device: {DeviceId}", deviceId);
                 
                 var response = new PostModelLoadResponse
                 {
@@ -1105,12 +1105,12 @@ namespace DeviceOperations.Services.Model
                     LoadSessionId = Guid.NewGuid(),
                     LoadTime = TimeSpan.FromSeconds(5),
                     MemoryUsed = 1073741824, // 1GB
-                    DeviceId = Guid.Parse(idDevice),
+                    DeviceId = Guid.Parse(deviceId),
                     LoadedAt = DateTime.UtcNow,
                     LoadMetrics = new Dictionary<string, object>
                     {
                         ["strategy"] = "device-specific",
-                        ["device_id"] = idDevice
+                        ["device_id"] = deviceId
                     }
                 };
 
@@ -1118,7 +1118,7 @@ namespace DeviceOperations.Services.Model
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading model on device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Error loading model on device: {DeviceId}", deviceId);
                 return Task.FromResult(ApiResponse<PostModelLoadResponse>.CreateError("LOAD_MODEL_ERROR", "Failed to load model", 500));
             }
         }
@@ -1339,11 +1339,11 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public Task<ApiResponse<PostModelVramLoadResponse>> PostModelVramLoadAsync(PostModelVramLoadRequest request, string idDevice)
+        public Task<ApiResponse<PostModelVramLoadResponse>> PostModelVramLoadAsync(PostModelVramLoadRequest request, string deviceId)
         {
             try
             {
-                _logger.LogInformation("Loading model to VRAM on device: {DeviceId}", idDevice);
+                _logger.LogInformation("Loading model to VRAM on device: {DeviceId}", deviceId);
                 
                 var response = new PostModelVramLoadResponse
                 {
@@ -1357,7 +1357,7 @@ namespace DeviceOperations.Services.Model
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading model to VRAM on device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Error loading model to VRAM on device: {DeviceId}", deviceId);
                 return Task.FromResult(ApiResponse<PostModelVramLoadResponse>.CreateError("VRAM_LOAD_DEVICE_ERROR", "Failed to load model to VRAM on device", 500));
             }
         }
@@ -1385,16 +1385,16 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public Task<ApiResponse<DeleteModelVramUnloadResponse>> DeleteModelVramUnloadAsync(DeleteModelVramUnloadRequest request, string idDevice)
+        public Task<ApiResponse<DeleteModelVramUnloadResponse>> DeleteModelVramUnloadAsync(DeleteModelVramUnloadRequest request, string deviceId)
         {
             try
             {
-                _logger.LogInformation("Unloading model from VRAM on device: {DeviceId}", idDevice);
+                _logger.LogInformation("Unloading model from VRAM on device: {DeviceId}", deviceId);
                 
                 var response = new DeleteModelVramUnloadResponse
                 {
                     Success = true,
-                    Message = $"Model unloaded from VRAM on device {idDevice} successfully",
+                    Message = $"Model unloaded from VRAM on device {deviceId} successfully",
                     UnloadTime = TimeSpan.FromSeconds(1),
                     VramFreed = 2147483648 // 2GB
                 };
@@ -1403,7 +1403,7 @@ namespace DeviceOperations.Services.Model
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error unloading model from VRAM on device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Error unloading model from VRAM on device: {DeviceId}", deviceId);
                 return Task.FromResult(ApiResponse<DeleteModelVramUnloadResponse>.CreateError("VRAM_UNLOAD_DEVICE_ERROR", "Failed to unload model from VRAM on device", 500));
             }
         }
@@ -1663,19 +1663,19 @@ namespace DeviceOperations.Services.Model
             }
         }
 
-        public Task<ApiResponse<DeleteModelUnloadResponse>> DeleteModelUnloadAsync(string idDevice)
+        public Task<ApiResponse<DeleteModelUnloadResponse>> DeleteModelUnloadAsync(string deviceId)
         {
             try
             {
-                _logger.LogInformation("Unloading models from device: {DeviceId}", idDevice);
+                _logger.LogInformation("Unloading models from device: {DeviceId}", deviceId);
 
-                if (string.IsNullOrWhiteSpace(idDevice))
+                if (string.IsNullOrWhiteSpace(deviceId))
                     return Task.FromResult(ApiResponse<DeleteModelUnloadResponse>.CreateError("INVALID_DEVICE_ID", "Device ID cannot be null or empty", 400));
 
                 var response = new DeleteModelUnloadResponse
                 {
                     Success = true,
-                    Message = $"Models unloaded successfully from device {idDevice}",
+                    Message = $"Models unloaded successfully from device {deviceId}",
                     UnloadTime = TimeSpan.FromSeconds(1),
                     MemoryFreed = 4294967296 // Mock 4GB freed
                 };
@@ -1684,7 +1684,7 @@ namespace DeviceOperations.Services.Model
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error unloading models from device: {DeviceId}", idDevice);
+                _logger.LogError(ex, "Error unloading models from device: {DeviceId}", deviceId);
                 return Task.FromResult(ApiResponse<DeleteModelUnloadResponse>.CreateError("UNLOAD_DEVICE_ERROR", "Failed to unload models from device", 500));
             }
         }
@@ -2557,5 +2557,202 @@ namespace DeviceOperations.Services.Model
                 _ => "unknown"
             };
         }
+
+        #region Phase 4 Week 2: Foundation & Integration Implementation
+        
+        /// <summary>
+        /// Get model cache status - implements cache-to-VRAM workflow foundation
+        /// </summary>
+        public async Task<ApiResponse<GetModelStatusResponse>> GetModelCacheStatusAsync(string? modelId = null)
+        {
+            try
+            {
+                _logger.LogInformation($"Getting model cache status for model: {modelId ?? "all models"}");
+
+                // Execute Python cache status query using aligned command
+                var pythonRequest = new
+                {
+                    operation = "model.get_model_cache",
+                    model_id = modelId,
+                    include_components = true,
+                    include_memory_usage = true
+                };
+
+                var pythonResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MODEL, "get_model_cache", pythonRequest);
+
+                if (pythonResponse?.success == true)
+                {
+                    var cacheData = pythonResponse.data;
+                    
+                    var response = new GetModelStatusResponse
+                    {
+                        Status = new Dictionary<string, object>
+                        {
+                            { "model_id", modelId ?? "system" },
+                            { "cache_status", cacheData?.status?.ToString() ?? "cached" },
+                            { "memory_usage", cacheData?.memory_usage ?? new { } }
+                        },
+                        LoadedModels = new List<LoadedModelInfo>(),
+                        LoadingStatistics = new Dictionary<string, object>
+                        {
+                            { "cache_operation", "get_status" },
+                            { "timestamp", DateTime.UtcNow }
+                        }
+                    };
+
+                    _logger.LogInformation($"Successfully retrieved cache status for {modelId ?? "system"}");
+                    return ApiResponse<GetModelStatusResponse>.CreateSuccess(response);
+                }
+                else
+                {
+                    var errorMsg = pythonResponse?.error?.ToString() ?? "Failed to get cache status";
+                    _logger.LogWarning($"Python worker returned error for cache status: {errorMsg}");
+                    return ApiResponse<GetModelStatusResponse>.CreateError("CACHE_STATUS_ERROR", errorMsg);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to get model cache status for {modelId}");
+                return ApiResponse<GetModelStatusResponse>.CreateError("CACHE_STATUS_ERROR", 
+                    $"Cache status retrieval failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Cache model components - implements unified cache-to-VRAM workflow
+        /// </summary>
+        public async Task<ApiResponse<PostModelLoadResponse>> PostModelCacheAsync(PostModelLoadRequest request)
+        {
+            try
+            {
+                _logger.LogInformation($"Caching model components for path: {request.ModelPath}");
+
+                // Execute Python cache operation using aligned command
+                var pythonRequest = new
+                {
+                    operation = "model.post_model_cache",
+                    model_path = request.ModelPath,
+                    model_type = request.ModelType.ToString(),
+                    device_id = request.DeviceId,
+                    optimization_level = request.LoadingStrategy ?? "balanced",
+                    cache_priority = "high",
+                    enable_compression = true
+                };
+
+                var pythonResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MODEL, "post_model_cache", pythonRequest);
+
+                if (pythonResponse?.success == true)
+                {
+                    var cacheResult = pythonResponse.data;
+                    
+                    var response = new PostModelLoadResponse
+                    {
+                        Success = true,
+                        ModelId = request.ModelPath, // Use path as identifier
+                        LoadSessionId = Guid.NewGuid(),
+                        LoadTime = TimeSpan.FromMilliseconds(cacheResult?.cache_time_ms ?? 0),
+                        MemoryUsed = (cacheResult?.cache_size_mb ?? 0) * 1024 * 1024, // Convert MB to bytes
+                        DeviceId = request.DeviceId,
+                        LoadedAt = DateTime.UtcNow,
+                        LoadMetrics = new Dictionary<string, object>
+                        {
+                            { "CachedComponents", cacheResult?.cached_components ?? new List<string>() },
+                            { "CacheSize", cacheResult?.cache_size_mb ?? 0 },
+                            { "CompressionApplied", cacheResult?.compression_applied ?? false }
+                        }
+                    };
+
+                    _logger.LogInformation($"Successfully cached model components for: {request.ModelPath}");
+                    return ApiResponse<PostModelLoadResponse>.CreateSuccess(response);
+                }
+                else
+                {
+                    var errorMsg = pythonResponse?.error?.ToString() ?? "Failed to cache model components";
+                    _logger.LogWarning($"Python worker returned error for caching: {errorMsg}");
+                    return ApiResponse<PostModelLoadResponse>.CreateError("CACHE_ERROR", errorMsg);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to cache model components for {request.ModelPath}");
+                return ApiResponse<PostModelLoadResponse>.CreateError("CACHE_ERROR", 
+                    $"Model caching failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get model components - implements component discovery and dependency analysis
+        /// </summary>
+        public async Task<ApiResponse<ListModelsResponse>> GetModelComponentsAsync(string modelId)
+        {
+            try
+            {
+                _logger.LogInformation($"Getting model components for: {modelId}");
+
+                if (string.IsNullOrWhiteSpace(modelId))
+                    return ApiResponse<ListModelsResponse>.CreateError("INVALID_MODEL_ID", "Model ID cannot be null or empty");
+
+                // Execute Python component discovery using aligned command
+                var pythonRequest = new
+                {
+                    operation = "model.get_model_components",
+                    model_id = modelId,
+                    include_dependencies = true,
+                    include_size_info = true,
+                    analyze_compatibility = true
+                };
+
+                var pythonResponse = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MODEL, "get_model_components", pythonRequest);
+
+                if (pythonResponse?.success == true)
+                {
+                    var componentsData = pythonResponse.data;
+                    var components = new List<ModelInfo>();
+
+                    // Convert Python components to ModelInfo objects using available properties
+                    if (componentsData?.components != null)
+                    {
+                        foreach (var component in componentsData.components)
+                        {
+                            var componentInfo = new ModelInfo
+                            {
+                                Id = component?.id?.ToString() ?? "",
+                                Name = component?.name?.ToString() ?? "",
+                                Type = ModelType.LoRA, // Default type, can be enhanced later
+                                Hash = component?.hash?.ToString() ?? "",
+                                Version = component?.version?.ToString() ?? "1.0",
+                                Description = component?.description?.ToString() ?? ""
+                            };
+                            components.Add(componentInfo);
+                        }
+                    }
+                    
+                    var response = new ListModelsResponse
+                    {
+                        Models = components
+                    };
+
+                    _logger.LogInformation($"Successfully retrieved {components.Count} components for model {modelId}");
+                    return ApiResponse<ListModelsResponse>.CreateSuccess(response);
+                }
+                else
+                {
+                    var errorMsg = pythonResponse?.error?.ToString() ?? "Failed to get model components";
+                    _logger.LogWarning($"Python worker returned error for components: {errorMsg}");
+                    return ApiResponse<ListModelsResponse>.CreateError("COMPONENTS_ERROR", errorMsg);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to get model components for {modelId}");
+                return ApiResponse<ListModelsResponse>.CreateError("COMPONENTS_ERROR", 
+                    $"Component discovery failed: {ex.Message}");
+            }
+        }
+
+        #endregion Phase 4 Week 2: Foundation & Integration Implementation
     }
 }

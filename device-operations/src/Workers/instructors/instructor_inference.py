@@ -7,8 +7,11 @@ Controls inference managers through the inference interface.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from .instructor_device import BaseInstructor
+
+if TYPE_CHECKING:
+    from ..inference.interface_inference import InferenceInterface
 
 
 class InferenceInstructor(BaseInstructor):
@@ -21,7 +24,7 @@ class InferenceInstructor(BaseInstructor):
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.inference_interface = None
+        self.inference_interface: Optional["InferenceInterface"] = None
         
     async def initialize(self) -> bool:
         """Initialize inference instructor and interface."""
@@ -41,16 +44,21 @@ class InferenceInstructor(BaseInstructor):
                 return True
             else:
                 self.logger.error("Failed to initialize inference interface")
+                self.inference_interface = None
                 return False
                 
         except Exception as e:
             self.logger.error(f"Inference instructor initialization failed: {e}")
+            self.inference_interface = None
             return False
     
     async def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Handle inference-related requests."""
         if not self.initialized:
             return {"success": False, "error": "Inference instructor not initialized"}
+        
+        if self.inference_interface is None:
+            return {"success": False, "error": "Inference interface not available"}
         
         try:
             request_type = request.get("type", "")
@@ -73,6 +81,18 @@ class InferenceInstructor(BaseInstructor):
                 return await self.inference_interface.batch_process(request)
             elif request_type == "inference.get_pipeline_info":
                 return await self.inference_interface.get_pipeline_info(request)
+            elif request_type == "inference.get_capabilities":
+                return await self.inference_interface.get_capabilities(request)
+            elif request_type == "inference.get_supported_types":
+                return await self.inference_interface.get_supported_types(request)
+            elif request_type == "inference.validate_request":
+                return await self.inference_interface.validate_request(request)
+            elif request_type == "inference.get_session_status":
+                return await self.inference_interface.get_session_status(request)
+            elif request_type == "inference.cancel_session":
+                return await self.inference_interface.cancel_session(request)
+            elif request_type == "inference.get_active_sessions":
+                return await self.inference_interface.get_active_sessions(request)
             else:
                 return {
                     "success": False,

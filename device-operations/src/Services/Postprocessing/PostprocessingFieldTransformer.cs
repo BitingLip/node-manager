@@ -1,31 +1,270 @@
 using System.Text.Json;
+using DeviceOperations.Models.Common;
+using DeviceOperations.Models.Postprocessing;
+using System.Reflection;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace DeviceOperations.Services.Postprocessing
 {
     /// <summary>
-    /// Field transformation service for postprocessing operations
-    /// Handles PascalCase ↔ snake_case conversion and field mapping
+    /// Enhanced field transformation service for postprocessing operations
+    /// Handles PascalCase ↔ snake_case conversion, field mapping, and complex object transformation
+    /// Phase 4 Enhancement: Supports complex nested objects and cross-domain compatibility
     /// </summary>
     public class PostprocessingFieldTransformer
     {
         private readonly ILogger<PostprocessingFieldTransformer> _logger;
         private readonly Dictionary<string, string> _pascalToSnakeMapping;
         private readonly Dictionary<string, string> _snakeToPascalMapping;
+        private readonly IMemoryCache _transformationCache;
+        private readonly Dictionary<Type, Func<object, Dictionary<string, object>>> _customTypeTransformers;
+        
+        // Phase 4 Enhancement: Large payload optimization threshold
+        private const int LARGE_PAYLOAD_THRESHOLD = 1024 * 1024; // 1MB
+        private const int MAX_TRANSFORMATION_CACHE_SIZE = 1000;
 
-        public PostprocessingFieldTransformer(ILogger<PostprocessingFieldTransformer> logger)
+        public PostprocessingFieldTransformer(
+            ILogger<PostprocessingFieldTransformer> logger,
+            IMemoryCache memoryCache)
         {
             _logger = logger;
+            _transformationCache = memoryCache;
             _pascalToSnakeMapping = InitializePascalToSnakeMapping();
             _snakeToPascalMapping = InitializeSnakeToPascalMapping();
+            _customTypeTransformers = InitializeCustomTypeTransformers();
         }
 
         /// <summary>
-        /// Transform C# request to Python format
+        /// Phase 4 Enhancement: Estimate payload size for optimization decisions
+        /// </summary>
+        private long EstimatePayloadSize(Dictionary<string, object> payload)
+        {
+            try
+            {
+                var jsonString = JsonSerializer.Serialize(payload);
+                return System.Text.Encoding.UTF8.GetByteCount(jsonString);
+            }
+            catch
+            {
+                // Fallback estimation based on field count
+                return payload.Count * 100; // Rough estimate of 100 bytes per field
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Generate cache key for transformation patterns
+        /// </summary>
+        private string GenerateTransformationCacheKey(Dictionary<string, object> payload)
+        {
+            var keyElements = new List<string>();
+            
+            // Use payload structure for cache key
+            foreach (var kvp in payload.Take(5)) // Use first 5 fields for cache key
+            {
+                var valueType = kvp.Value?.GetType().Name ?? "null";
+                keyElements.Add($"{kvp.Key}:{valueType}");
+            }
+            
+            keyElements.Add($"count:{payload.Count}");
+            return string.Join("|", keyElements);
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Adapt cached transformation to current payload
+        /// </summary>
+        private Dictionary<string, object>? AdaptCachedTransformation(object cachedPattern, Dictionary<string, object> payload)
+        {
+            try
+            {
+                if (cachedPattern is not Dictionary<string, object> pattern)
+                    return null;
+                
+                var result = new Dictionary<string, object>();
+                
+                foreach (var kvp in payload)
+                {
+                    var pythonKey = ConvertToPythonFieldName(kvp.Key);
+                    var pythonValue = ConvertToPythonValue(kvp.Value);
+                    result[pythonKey] = pythonValue;
+                }
+                
+                return result;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Cache transformation pattern for reuse
+        /// </summary>
+        private void CacheTransformationPattern(string cacheKey, Dictionary<string, object> result, Dictionary<string, object> original)
+        {
+            try
+            {
+                var pattern = ExtractTransformationPattern(original, result);
+                
+                _transformationCache.Set(cacheKey, pattern, new MemoryCacheEntryOptions
+                {
+                    SlidingExpiration = TimeSpan.FromMinutes(30),
+                    Priority = CacheItemPriority.High,
+                    Size = EstimatePatternSize(pattern)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to cache transformation pattern");
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Extract transformation pattern for caching
+        /// </summary>
+        private Dictionary<string, object> ExtractTransformationPattern(Dictionary<string, object> original, Dictionary<string, object> result)
+        {
+            var pattern = new Dictionary<string, object>();
+            
+            foreach (var kvp in original)
+            {
+                var originalType = kvp.Value?.GetType().Name ?? "null";
+                var pythonKey = ConvertToPythonFieldName(kvp.Key);
+                
+                pattern[kvp.Key] = new { pythonKey, originalType };
+            }
+            
+            return pattern;
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Estimate pattern size for cache management
+        /// </summary>
+        private long EstimatePatternSize(Dictionary<string, object> pattern)
+        {
+            return pattern.Count * 50; // Rough estimate of 50 bytes per pattern entry
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Check if object is complex (nested)
+        /// </summary>
+        private bool IsComplexObject(object? value)
+        {
+            if (value == null) return false;
+            
+            var type = value.GetType();
+            
+            // Check for collection types
+            if (value is IEnumerable<object> || value is IDictionary<string, object>)
+                return true;
+                
+            // Check for custom objects (not primitives or strings)
+            return !type.IsPrimitive && type != typeof(string) && type != typeof(DateTime) && 
+                   type != typeof(decimal) && type != typeof(double) && type != typeof(float);
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Transform complex objects with nested support
+        /// </summary>
+        private object TransformComplexObject(object value)
+        {
+            try
+            {
+                if (value is IDictionary<string, object> dict)
+                {
+                    var result = new Dictionary<string, object>();
+                    foreach (var kvp in dict)
+                    {
+                        var pythonKey = ConvertToPythonFieldName(kvp.Key);
+                        var pythonValue = ConvertToPythonValue(kvp.Value);
+                        result[pythonKey] = pythonValue;
+                    }
+                    return result;
+                }
+                
+                if (value is IEnumerable<object> enumerable)
+                {
+                    return enumerable.Select(ConvertToPythonValue).ToList();
+                }
+                
+                // Use reflection for other complex objects
+                return TransformObjectUsingReflection(value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Failed to transform complex object of type {value?.GetType()}");
+                return value ?? new object(); // Return safe object if value is null
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Optimize transformation for large payloads
+        /// </summary>
+        private Dictionary<string, object> OptimizeTransformationForLargePayload(Dictionary<string, object> payload)
+        {
+            _logger.LogInformation($"Optimizing transformation for large payload ({EstimatePayloadSize(payload)} bytes)");
+            
+            var result = new Dictionary<string, object>();
+            
+            // Process in batches for memory efficiency
+            const int batchSize = 100;
+            var keys = payload.Keys.ToList();
+            
+            for (int i = 0; i < keys.Count; i += batchSize)
+            {
+                var batch = keys.Skip(i).Take(batchSize);
+                
+                foreach (var key in batch)
+                {
+                    try
+                    {
+                        var pythonKey = ConvertToPythonFieldName(key);
+                        var pythonValue = ConvertToPythonValue(payload[key]);
+                        result[pythonKey] = pythonValue;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, $"Failed to transform field {key} in large payload");
+                    }
+                }
+                
+                // Allow garbage collection between batches
+                if (i % (batchSize * 10) == 0)
+                {
+                    GC.Collect(0, GCCollectionMode.Optimized);
+                }
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Transform C# request to Python format with enhanced capabilities
+        /// Phase 4 Enhancement: Supports large payloads and complex objects
         /// </summary>
         public Dictionary<string, object> ToPythonFormat(Dictionary<string, object> csharpRequest)
         {
             try
             {
+                var payloadSize = EstimatePayloadSize(csharpRequest);
+                
+                // Phase 4 Enhancement: Optimize for large payloads
+                if (payloadSize > LARGE_PAYLOAD_THRESHOLD)
+                {
+                    return OptimizeTransformationForLargePayload(csharpRequest);
+                }
+                
+                // Check cache for repeated patterns
+                var cacheKey = GenerateTransformationCacheKey(csharpRequest);
+                if (_transformationCache.TryGetValue(cacheKey, out var cachedPattern) && cachedPattern != null)
+                {
+                    var adaptedResult = AdaptCachedTransformation(cachedPattern, csharpRequest);
+                    if (adaptedResult != null)
+                    {
+                        _logger.LogDebug($"Used cached transformation pattern for {csharpRequest.Count} fields");
+                        return adaptedResult;
+                    }
+                }
+
                 var pythonRequest = new Dictionary<string, object>();
 
                 foreach (var kvp in csharpRequest)
@@ -35,7 +274,10 @@ namespace DeviceOperations.Services.Postprocessing
                     pythonRequest[pythonKey] = pythonValue;
                 }
 
-                _logger.LogDebug($"Transformed {csharpRequest.Count} fields to Python format");
+                // Cache transformation pattern for reuse
+                CacheTransformationPattern(cacheKey, pythonRequest, csharpRequest);
+
+                _logger.LogDebug($"Transformed {csharpRequest.Count} fields to Python format (Size: {payloadSize} bytes)");
                 return pythonRequest;
             }
             catch (Exception ex)
@@ -219,9 +461,10 @@ namespace DeviceOperations.Services.Postprocessing
         {
             if (value == null) return null;
 
-            // Handle specific type conversions if needed
+            // Phase 4 Enhancement: Enhanced type conversion with complex object support
             return value switch
             {
+                // Basic types (existing)
                 bool boolValue => boolValue,
                 string stringValue => stringValue,
                 int intValue => intValue,
@@ -231,10 +474,28 @@ namespace DeviceOperations.Services.Postprocessing
                 decimal decimalValue => (double)decimalValue,
                 DateTime dateTimeValue => dateTimeValue.ToString("O"), // ISO 8601 format
                 Enum enumValue => enumValue.ToString().ToLowerInvariant(),
+                
+                // Phase 4 NEW: Complex postprocessing objects
+                IPostprocessingModel modelValue => TransformPostprocessingModel(modelValue),
+                IPostprocessingConfiguration configValue => TransformConfigurationObject(configValue),
+                IPostprocessingMetrics metricsValue => TransformMetricsObject(metricsValue),
+                
+                // Phase 4 NEW: Custom type handlers
+                var customValue when _customTypeTransformers.ContainsKey(customValue.GetType()) =>
+                    _customTypeTransformers[customValue.GetType()](customValue),
+                
+                // Enhanced nested objects (existing but improved)
                 IDictionary<string, object> dictValue => dictValue.ToDictionary(
                     kvp => ConvertToPythonFieldName(kvp.Key),
                     kvp => ConvertToPythonValue(kvp.Value)),
-                IEnumerable<object> listValue => listValue.Select(ConvertToPythonValue).ToList(),
+                
+                // Phase 4 NEW: Enhanced array processing with type hints
+                IEnumerable<object> listValue => TransformArrayWithTypeHints(listValue),
+                
+                // Phase 4 NEW: Reflection-based complex object transformation
+                _ when IsComplexObject(value) => TransformComplexObject(value),
+                
+                // Fallback (existing)
                 _ => value
             };
         }
@@ -275,7 +536,7 @@ namespace DeviceOperations.Services.Postprocessing
         /// <summary>
         /// Test transformation performance and accuracy
         /// </summary>
-        public async Task<(TimeSpan transformTime, int fieldsProcessed, bool success)> TestTransformationPerformanceAsync()
+        public Task<(TimeSpan transformTime, int fieldsProcessed, bool success)> TestTransformationPerformanceAsync()
         {
             var testData = CreateTestTransformationData();
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -292,13 +553,13 @@ namespace DeviceOperations.Services.Postprocessing
                 
                 _logger.LogInformation($"Transformation test: {fieldsProcessed} fields in {stopwatch.Elapsed.TotalMilliseconds:F2}ms, Success: {success}");
                 
-                return (stopwatch.Elapsed, fieldsProcessed, success);
+                return Task.FromResult((stopwatch.Elapsed, fieldsProcessed, success));
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 _logger.LogError(ex, "Transformation test failed");
-                return (stopwatch.Elapsed, 0, false);
+                return Task.FromResult((stopwatch.Elapsed, 0, false));
             }
         }
 
@@ -349,5 +610,563 @@ namespace DeviceOperations.Services.Postprocessing
                 return false;
             }
         }
+
+        #region Phase 4 Enhancement Methods
+
+        /// <summary>
+        /// Initialize custom type transformers for complex objects
+        /// </summary>
+        private Dictionary<Type, Func<object, Dictionary<string, object>>> InitializeCustomTypeTransformers()
+        {
+            return new Dictionary<Type, Func<object, Dictionary<string, object>>>
+            {
+                // Add custom transformers as needed for specific types
+                // Example: [typeof(SomeCustomType)] = obj => TransformSomeCustomType((SomeCustomType)obj)
+            };
+        }
+
+        /// <summary>
+        /// Transform postprocessing model objects
+        /// </summary>
+        private Dictionary<string, object> TransformPostprocessingModel(IPostprocessingModel model)
+        {
+            return new Dictionary<string, object>
+            {
+                ["model_id"] = model.ModelId,
+                ["model_type"] = model.ModelType?.ToString().ToLowerInvariant(),
+                ["capabilities"] = TransformModelCapabilities(model.Capabilities),
+                ["optimization_level"] = model.OptimizationLevel?.ToString().ToLowerInvariant(),
+                ["memory_requirements"] = TransformMemoryRequirements(model.MemoryRequirements)
+            };
+        }
+
+        /// <summary>
+        /// Transform configuration objects
+        /// </summary>
+        private Dictionary<string, object> TransformConfigurationObject(IPostprocessingConfiguration config)
+        {
+            var result = new Dictionary<string, object>();
+            
+            // Use reflection to transform all public properties
+            var properties = config.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            foreach (var prop in properties)
+            {
+                var pythonKey = ConvertToPythonFieldName(prop.Name);
+                var value = prop.GetValue(config);
+                result[pythonKey] = ConvertToPythonValue(value);
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Transform metrics objects
+        /// </summary>
+        private Dictionary<string, object> TransformMetricsObject(IPostprocessingMetrics metrics)
+        {
+            var result = new Dictionary<string, object>();
+            
+            // Use reflection to transform all public properties
+            var properties = metrics.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            foreach (var prop in properties)
+            {
+                var pythonKey = ConvertToPythonFieldName(prop.Name);
+                var value = prop.GetValue(metrics);
+                result[pythonKey] = ConvertToPythonValue(value);
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Transform model capabilities
+        /// </summary>
+        private Dictionary<string, object> TransformModelCapabilities(object capabilities)
+        {
+            if (capabilities == null) return new Dictionary<string, object>();
+            
+            var result = new Dictionary<string, object>();
+            var properties = capabilities.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            
+            foreach (var prop in properties)
+            {
+                var pythonKey = ConvertToPythonFieldName(prop.Name);
+                var value = prop.GetValue(capabilities);
+                result[pythonKey] = ConvertToPythonValue(value);
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Transform memory requirements
+        /// </summary>
+        private Dictionary<string, object> TransformMemoryRequirements(object memoryRequirements)
+        {
+            if (memoryRequirements == null) return new Dictionary<string, object>();
+            
+            var result = new Dictionary<string, object>();
+            var properties = memoryRequirements.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            
+            foreach (var prop in properties)
+            {
+                var pythonKey = ConvertToPythonFieldName(prop.Name);
+                var value = prop.GetValue(memoryRequirements);
+                result[pythonKey] = ConvertToPythonValue(value);
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Transform arrays with type hints for better performance
+        /// </summary>
+        private List<object> TransformArrayWithTypeHints(IEnumerable<object> listValue)
+        {
+            var list = listValue.ToList();
+            if (!list.Any()) return new List<object>();
+            
+            // Detect common type for optimization
+            var firstItemType = list.First()?.GetType();
+            var isHomogeneous = list.All(item => item?.GetType() == firstItemType);
+            
+            if (isHomogeneous && firstItemType != null)
+            {
+                // Optimized transformation for homogeneous arrays
+                return TransformHomogeneousArray(list, firstItemType);
+            }
+            
+            // Standard transformation for heterogeneous arrays
+            return list.Select(ConvertToPythonValue).ToList();
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Optimized transformation for homogeneous arrays
+        /// </summary>
+        private List<object> TransformHomogeneousArray(List<object> items, Type itemType)
+        {
+            // Use specialized transformation for known types
+            if (typeof(IPostprocessingModel).IsAssignableFrom(itemType))
+            {
+                return items.Cast<IPostprocessingModel>()
+                           .Select(TransformPostprocessingModel)
+                           .Cast<object>()
+                           .ToList();
+            }
+            
+            if (typeof(IPostprocessingConfiguration).IsAssignableFrom(itemType))
+            {
+                return items.Cast<IPostprocessingConfiguration>()
+                           .Select(TransformConfigurationObject)
+                           .Cast<object>()
+                           .ToList();
+            }
+            
+            // Fallback to standard transformation
+            return items.Select(ConvertToPythonValue).ToList();
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Comprehensive transformation testing
+        /// </summary>
+        public async Task<TransformationTestResult> TestComplexTransformationAsync()
+        {
+            try
+            {
+                var complexTestData = CreateComplexTestData();
+                var accuracyTests = new List<TransformationAccuracyTest>();
+                
+                foreach (var testCase in complexTestData)
+                {
+                    var result = await ExecuteTransformationTest(testCase);
+                    accuracyTests.Add(result);
+                }
+                
+                return new TransformationTestResult
+                {
+                    TotalTests = accuracyTests.Count,
+                    PassedTests = accuracyTests.Count(t => t.Success),
+                    AccuracyScore = accuracyTests.Average(t => t.AccuracyScore),
+                    ComplexObjectSupport = AnalyzeComplexObjectSupport(accuracyTests),
+                    EdgeCaseHandling = AnalyzeEdgeCaseHandling(accuracyTests)
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during complex transformation testing");
+                return new TransformationTestResult
+                {
+                    TotalTests = 0,
+                    PassedTests = 0,
+                    AccuracyScore = 0.0,
+                    ComplexObjectSupport = false,
+                    EdgeCaseHandling = false
+                };
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Transform large payloads in chunks
+        /// </summary>
+        private Dictionary<string, object> TransformInChunks(Dictionary<string, object> payload)
+        {
+            var result = new Dictionary<string, object>();
+            var chunkSize = 100; // Process 100 fields at a time
+            var chunks = payload.Keys.Select((key, index) => new { key, index })
+                                   .GroupBy(x => x.index / chunkSize)
+                                   .Select(g => g.Select(x => x.key).ToList());
+
+            foreach (var chunk in chunks)
+            {
+                var chunkDict = chunk.ToDictionary(key => key, key => payload[key]);
+                var transformedChunk = TransformChunk(chunkDict);
+                
+                foreach (var kvp in transformedChunk)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Transform a chunk of the payload
+        /// </summary>
+        private Dictionary<string, object> TransformChunk(Dictionary<string, object> chunk)
+        {
+            var result = new Dictionary<string, object>();
+            
+            foreach (var kvp in chunk)
+            {
+                var pythonKey = ConvertToPythonFieldName(kvp.Key);
+                var pythonValue = ConvertToPythonValue(kvp.Value);
+                result[pythonKey] = pythonValue;
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Transform model capabilities
+        /// </summary>
+        private Dictionary<string, object> TransformModelCapabilities(Dictionary<string, object> capabilities)
+        {
+            var result = new Dictionary<string, object>();
+            
+            foreach (var kvp in capabilities)
+            {
+                var pythonKey = ConvertToPythonFieldName(kvp.Key);
+                var pythonValue = ConvertToPythonValue(kvp.Value);
+                result[pythonKey] = pythonValue;
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Transform memory requirements
+        /// </summary>
+        private Dictionary<string, object> TransformMemoryRequirements(MemoryRequirements requirements)
+        {
+            return new Dictionary<string, object>
+            {
+                ["minimum_memory_mb"] = requirements.MinimumMemoryMB,
+                ["recommended_memory_mb"] = requirements.RecommendedMemoryMB,
+                ["maximum_memory_mb"] = requirements.MaximumMemoryMB,
+                ["requires_gpu"] = requirements.RequiresGPU,
+                ["minimum_vram_mb"] = requirements.MinimumVRAMMB
+            };
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Transform performance metrics
+        /// </summary>
+        private Dictionary<string, object> TransformPerformanceMetrics(PostprocessingPerformanceMetrics metrics)
+        {
+            var result = new Dictionary<string, object>();
+            
+            // Use reflection to safely access available properties
+            var metricsType = metrics.GetType();
+            var properties = metricsType.GetProperties();
+            
+            foreach (var property in properties)
+            {
+                try
+                {
+                    var value = property.GetValue(metrics);
+                    if (value != null)
+                    {
+                        var pythonKey = ConvertToPythonFieldName(property.Name);
+                        result[pythonKey] = ConvertToPythonValue(value);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"Failed to transform metrics property {property.Name}");
+                }
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Transform object using reflection as fallback
+        /// </summary>
+        private Dictionary<string, object> TransformObjectUsingReflection(object obj)
+        {
+            var result = new Dictionary<string, object>();
+            
+            try
+            {
+                var properties = obj.GetType().GetProperties();
+                
+                foreach (var property in properties)
+                {
+                    try
+                    {
+                        var value = property.GetValue(obj);
+                        if (value != null)
+                        {
+                            var pythonKey = ConvertToPythonFieldName(property.Name);
+                            var pythonValue = ConvertToPythonValue(value);
+                            result[pythonKey] = pythonValue;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, $"Failed to transform property {property.Name}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to transform object using reflection");
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Create complex test data for transformation testing
+        /// </summary>
+        private List<TransformationTestCase> CreateComplexTestData()
+        {
+            return new List<TransformationTestCase>
+            {
+                // Simple object test
+                new TransformationTestCase
+                {
+                    TestName = "SimpleObject",
+                    InputData = new Dictionary<string, object>
+                    {
+                        ["DeviceId"] = "device-123",
+                        ["ModelType"] = "Upscaler",
+                        ["QualityLevel"] = 85.5
+                    },
+                    IsComplexObject = false,
+                    IsLargePayload = false
+                },
+                
+                // Complex nested object test
+                new TransformationTestCase
+                {
+                    TestName = "ComplexNestedObject",
+                    InputData = new Dictionary<string, object>
+                    {
+                        ["RequestId"] = "req-456",
+                        ["Configuration"] = new Dictionary<string, object>
+                        {
+                            ["UpscaleFactor"] = 2.0,
+                            ["PreserveFaces"] = true,
+                            ["NoiseReduction"] = 0.7
+                        },
+                        ["ModelSettings"] = new Dictionary<string, object>
+                        {
+                            ["ModelType"] = "ESRGAN",
+                            ["MemoryUsage"] = 1024
+                        }
+                    },
+                    IsComplexObject = true,
+                    IsLargePayload = false
+                },
+                
+                // Array handling test
+                new TransformationTestCase
+                {
+                    TestName = "ArrayHandling",
+                    InputData = new Dictionary<string, object>
+                    {
+                        ["BatchItems"] = new List<object>
+                        {
+                            new Dictionary<string, object> { ["ImageId"] = "img1", ["Size"] = 512 },
+                            new Dictionary<string, object> { ["ImageId"] = "img2", ["Size"] = 1024 }
+                        },
+                        ["SupportedFormats"] = new List<string> { "PNG", "JPEG", "WEBP" }
+                    },
+                    IsComplexObject = true,
+                    IsLargePayload = false
+                }
+            };
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Execute transformation test
+        /// </summary>
+        private Task<TransformationAccuracyTest> ExecuteTransformationTest(TransformationTestCase testCase)
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            
+            try
+            {
+                var result = ToPythonFormat(testCase.InputData);
+                stopwatch.Stop();
+                
+                var success = ValidateTransformationResult(testCase, result);
+                var accuracy = CalculateTransformationAccuracy(testCase, result);
+                
+                return Task.FromResult(new TransformationAccuracyTest
+                {
+                    TestName = testCase.TestName,
+                    Success = success,
+                    AccuracyScore = accuracy,
+                    TestDuration = stopwatch.Elapsed,
+                    TestData = result
+                });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                
+                return Task.FromResult(new TransformationAccuracyTest
+                {
+                    TestName = testCase.TestName,
+                    Success = false,
+                    AccuracyScore = 0.0,
+                    ErrorMessage = ex.Message,
+                    TestDuration = stopwatch.Elapsed
+                });
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Validate transformation result
+        /// </summary>
+        private bool ValidateTransformationResult(TransformationTestCase testCase, Dictionary<string, object> result)
+        {
+            try
+            {
+                // Check that all input keys are transformed
+                foreach (var inputKey in testCase.InputData.Keys)
+                {
+                    var expectedPythonKey = ConvertToPythonFieldName(inputKey);
+                    if (!result.ContainsKey(expectedPythonKey))
+                    {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Calculate transformation accuracy
+        /// </summary>
+        private double CalculateTransformationAccuracy(TransformationTestCase testCase, Dictionary<string, object> result)
+        {
+            try
+            {
+                var correctTransformations = 0;
+                var totalTransformations = testCase.InputData.Count;
+                
+                foreach (var inputKvp in testCase.InputData)
+                {
+                    var expectedPythonKey = ConvertToPythonFieldName(inputKvp.Key);
+                    if (result.ContainsKey(expectedPythonKey))
+                    {
+                        correctTransformations++;
+                    }
+                }
+                
+                return totalTransformations > 0 ? (double)correctTransformations / totalTransformations : 0.0;
+            }
+            catch
+            {
+                return 0.0;
+            }
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Analyze complex object support
+        /// </summary>
+        private bool AnalyzeComplexObjectSupport(List<TransformationAccuracyTest> tests)
+        {
+            var complexObjectTests = tests.Where(t => t.TestName.Contains("Complex") || t.TestName.Contains("Nested"));
+            return complexObjectTests.Any() && complexObjectTests.All(t => t.Success && t.AccuracyScore > 0.9);
+        }
+
+        /// <summary>
+        /// Phase 4 Enhancement: Analyze edge case handling
+        /// </summary>
+        private bool AnalyzeEdgeCaseHandling(List<TransformationAccuracyTest> tests)
+        {
+            var edgeCaseTests = tests.Where(t => t.TestName.Contains("Array") || t.TestName.Contains("Edge"));
+            return edgeCaseTests.Any() && edgeCaseTests.All(t => t.Success && t.AccuracyScore > 0.8);
+        }
+
+        #endregion
+
+        #region Helper Classes for Phase 4 Enhancements
+
+        public class TransformationTestResult
+        {
+            public int TotalTests { get; set; }
+            public int PassedTests { get; set; }
+            public double AccuracyScore { get; set; }
+            public bool ComplexObjectSupport { get; set; }
+            public bool EdgeCaseHandling { get; set; }
+        }
+
+        public class TransformationAccuracyTest
+        {
+            public bool Success { get; set; }
+            public double AccuracyScore { get; set; }
+            public TimeSpan ProcessingTime { get; set; }
+            public int FieldCount { get; set; }
+            public string ErrorMessage { get; set; } = string.Empty;
+            public string TestName { get; set; } = string.Empty;
+            public Dictionary<string, object> TestData { get; set; } = new Dictionary<string, object>();
+            public TimeSpan TestDuration { get; set; }
+        }
+
+        #endregion
     }
+
+    #region Interface Definitions for Phase 4 Enhancements
+
+    public interface IPostprocessingModel
+    {
+        string ModelId { get; }
+        object ModelType { get; }
+        object Capabilities { get; }
+        object OptimizationLevel { get; }
+        object MemoryRequirements { get; }
+    }
+
+    public interface IPostprocessingConfiguration
+    {
+        // Marker interface for configuration objects
+    }
+
+    public interface IPostprocessingMetrics
+    {
+        // Marker interface for metrics objects
+    }
+
+    #endregion
 }

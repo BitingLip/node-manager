@@ -7,7 +7,10 @@ Migrated from core/device_manager.py.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .managers.manager_device import DeviceManager
 
 
 class DeviceInterface:
@@ -21,7 +24,7 @@ class DeviceInterface:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.device_manager = None
+        self.device_manager: Optional['DeviceManager'] = None
         self.initialized = False
         
     async def initialize(self) -> bool:
@@ -184,6 +187,82 @@ class DeviceInterface:
             
         except Exception as e:
             self.logger.error("Device interface cleanup error: %s", e)
+
+    async def get_device_capabilities(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Get device capabilities through manager layer"""
+        if not self.initialized:
+            return {"success": False, "error": "Device interface not initialized"}
+        
+        try:
+            device_id = request.get("data", {}).get("device_id")
+            if not device_id:
+                return {
+                    "success": False,
+                    "error": "device_id is required",
+                    "request_id": request.get("request_id", "")
+                }
+            
+            capabilities_response = await self.device_manager.get_device_capabilities(device_id)
+            
+            # Handle standardized response format
+            if capabilities_response.get("success"):
+                return {
+                    "success": True,
+                    "data": capabilities_response.get("data"),
+                    "request_id": request.get("request_id", "")
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": capabilities_response.get("error_message", "Unknown capabilities error"),
+                    "error_code": capabilities_response.get("error_code"),
+                    "request_id": request.get("request_id", "")
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Device capabilities interface error: {str(e)}",
+                "request_id": request.get("request_id", "")
+            }
+
+    async def get_device_status(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Get device status through manager layer"""
+        if not self.initialized:
+            return {"success": False, "error": "Device interface not initialized"}
+        
+        try:
+            device_id = request.get("data", {}).get("device_id")
+            if not device_id:
+                return {
+                    "success": False,
+                    "error": "device_id is required",
+                    "request_id": request.get("request_id", "")
+                }
+            
+            status_response = await self.device_manager.get_device_status(device_id)
+            
+            # Handle standardized response format
+            if status_response.get("success"):
+                return {
+                    "success": True,
+                    "data": status_response.get("data"),
+                    "request_id": request.get("request_id", "")
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": status_response.get("error_message", "Unknown status error"),
+                    "error_code": status_response.get("error_code"),
+                    "request_id": request.get("request_id", "")
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Device status interface error: {str(e)}",
+                "request_id": request.get("request_id", "")
+            }
 
 
 # Factory function for creating device interface

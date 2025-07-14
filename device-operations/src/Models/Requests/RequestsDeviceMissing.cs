@@ -1,4 +1,5 @@
 using DeviceOperations.Models.Common;
+using static DeviceOperations.Models.Requests.RequestsDevice;
 
 namespace DeviceOperations.Models.Requests
 {
@@ -50,21 +51,6 @@ namespace DeviceOperations.Models.Requests
         public int DurationSeconds { get; set; } = 60;
     }
 
-    /// <summary>
-    /// Request model for device optimization
-    /// </summary>
-    public class PostDeviceOptimizeRequest
-    {
-        /// <summary>
-        /// Optimization target
-        /// </summary>
-        public OptimizationTarget Target { get; set; }
-
-        /// <summary>
-        /// Apply optimizations automatically
-        /// </summary>
-        public bool AutoApply { get; set; } = false;
-    }
 
     /// <summary>
     /// Request model for updating device configuration
@@ -253,5 +239,14 @@ namespace DeviceOperations.Models.Requests
         public string Operation { get; set; } = string.Empty;
         public int? MaxConcurrency { get; set; }
         public Dictionary<string, object>? Parameters { get; set; }
+    }
+}
+
+// Global type alias for backwards compatibility
+namespace DeviceOperations.Models.Requests
+{
+    public class PostDeviceOptimizeRequest : OptimizeDeviceRequest
+    {
+        // Inherits all properties from OptimizeDeviceRequest
     }
 }

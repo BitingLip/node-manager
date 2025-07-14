@@ -28,9 +28,6 @@ public static class ExtensionsServiceCollection
         services.AddSingleton<IPythonWorkerService, PythonWorkerService>();
         services.AddSingleton<IOptimizedPythonWorkerService, OptimizedPythonWorkerService>();
         
-        // Register field transformation service for inference
-        services.AddScoped<InferenceFieldTransformer>();
-        
         // Register environment service
         services.AddScoped<IServiceEnvironment, ServiceEnvironment>();
         

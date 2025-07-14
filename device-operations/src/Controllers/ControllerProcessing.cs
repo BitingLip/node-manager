@@ -44,7 +44,13 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Retrieving all available processing workflows");
                 
                 var workflows = await _serviceProcessing.GetProcessingWorkflowsAsync();
-                return Ok(ApiResponse<object>.CreateSuccess(workflows, "Processing workflows retrieved successfully"));
+                
+                if (workflows.IsSuccess)
+                {
+                    return Ok(workflows);
+                }
+                
+                return BadRequest(workflows);
             }
             catch (Exception ex)
             {
@@ -71,12 +77,13 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Retrieving workflow details for ID: {WorkflowId}", workflowId);
                 
                 var workflow = await _serviceProcessing.GetProcessingWorkflowAsync(workflowId);
-                if (workflow == null)
+                
+                if (workflow.IsSuccess)
                 {
-                    return NotFound(ApiResponse<object>.CreateError("Workflow not found", $"Workflow '{workflowId}' not found"));
+                    return Ok(workflow);
                 }
-
-                return Ok(ApiResponse<object>.CreateSuccess(workflow, "Workflow details retrieved successfully"));
+                
+                return BadRequest(workflow);
             }
             catch (Exception ex)
             {
@@ -133,7 +140,13 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Retrieving all active processing sessions");
                 
                 var sessions = await _serviceProcessing.GetProcessingSessionsAsync();
-                return Ok(ApiResponse<object>.CreateSuccess(sessions, "Processing sessions retrieved successfully"));
+                
+                if (sessions.IsSuccess)
+                {
+                    return Ok(sessions);
+                }
+                
+                return BadRequest(sessions);
             }
             catch (Exception ex)
             {
@@ -160,12 +173,13 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Retrieving processing session: {SessionId}", sessionId);
                 
                 var session = await _serviceProcessing.GetProcessingSessionAsync(sessionId);
-                if (session == null)
+                
+                if (session.IsSuccess)
                 {
-                    return NotFound(ApiResponse<object>.CreateError("Session not found", $"Session '{sessionId}' not found"));
+                    return Ok(session);
                 }
-
-                return Ok(ApiResponse<object>.CreateSuccess(session, "Processing session retrieved successfully"));
+                
+                return BadRequest(session);
             }
             catch (Exception ex)
             {
@@ -198,12 +212,13 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Applying control action to session: {SessionId}", sessionId);
                 
                 var result = await _serviceProcessing.PostSessionControlAsync(sessionId, request);
-                if (result == null)
+                
+                if (result.IsSuccess)
                 {
-                    return NotFound(ApiResponse<object>.CreateError("Session not found", $"Session '{sessionId}' not found"));
+                    return Ok(result);
                 }
-
-                return Ok(ApiResponse<object>.CreateSuccess(result, "Session control operation completed successfully"));
+                
+                return BadRequest(result);
             }
             catch (ArgumentException ex)
             {
@@ -235,12 +250,13 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Cancelling and removing processing session: {SessionId}", sessionId);
                 
                 var result = await _serviceProcessing.DeleteProcessingSessionAsync(sessionId);
-                if (result == null)
+                
+                if (result.IsSuccess)
                 {
-                    return NotFound(ApiResponse<object>.CreateError("Session not found", $"Session '{sessionId}' not found"));
+                    return Ok(result);
                 }
-
-                return Ok(ApiResponse<object>.CreateSuccess(result, "Processing session cancelled and removed successfully"));
+                
+                return BadRequest(result);
             }
             catch (Exception ex)
             {
@@ -265,7 +281,13 @@ namespace DeviceOperations.Controllers
                 _logger.LogInformation("Retrieving all batch operations");
                 
                 var batches = await _serviceProcessing.GetProcessingBatchesAsync();
-                return Ok(ApiResponse<object>.CreateSuccess(batches, "Batch operations retrieved successfully"));
+                
+                if (batches.IsSuccess)
+                {
+                    return Ok(batches);
+                }
+                
+                return BadRequest(batches);
             }
             catch (Exception ex)
             {

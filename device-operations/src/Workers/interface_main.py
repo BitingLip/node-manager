@@ -16,6 +16,7 @@ class WorkerType(Enum):
     """Supported worker types."""
     DEVICE = "device"
     COMMUNICATION = "communication"
+    MEMORY = "memory"
     MODEL = "model"
     CONDITIONING = "conditioning"
     INFERENCE = "inference"
@@ -53,6 +54,7 @@ class WorkersInterface:
         # Instructor instances (will be initialized in setup)
         self.device_instructor = None
         self.communication_instructor = None
+        self.memory_instructor = None
         self.model_instructor = None
         self.conditioning_instructor = None
         self.inference_instructor = None
@@ -94,6 +96,7 @@ class WorkersInterface:
             # Import instructors (lazy loading to avoid circular dependencies)
             from .instructors.instructor_device import DeviceInstructor
             from .instructors.instructor_communication import CommunicationInstructor
+            from .instructors.instructor_memory import MemoryInstructor
             from .instructors.instructor_model import ModelInstructor
             from .instructors.instructor_conditioning import ConditioningInstructor
             from .instructors.instructor_inference import InferenceInstructor
@@ -103,6 +106,7 @@ class WorkersInterface:
             # Initialize instructors
             self.device_instructor = DeviceInstructor(self.config.get("device", {}))
             self.communication_instructor = CommunicationInstructor(self.config.get("communication", {}))
+            self.memory_instructor = MemoryInstructor(self.config.get("memory", {}))
             self.model_instructor = ModelInstructor(self.config.get("model", {}))
             self.conditioning_instructor = ConditioningInstructor(self.config.get("conditioning", {}))
             self.inference_instructor = InferenceInstructor(self.config.get("inference", {}))
@@ -113,6 +117,7 @@ class WorkersInterface:
             instructors = [
                 self.device_instructor,
                 self.communication_instructor,
+                self.memory_instructor,
                 self.model_instructor,
                 self.conditioning_instructor,
                 self.inference_instructor,
@@ -155,6 +160,8 @@ class WorkersInterface:
                 return await self.device_instructor.handle_request(request)
             elif request_type.startswith("communication"):
                 return await self.communication_instructor.handle_request(request)
+            elif request_type.startswith("memory"):
+                return await self.memory_instructor.handle_request(request)
             elif request_type.startswith("model"):
                 return await self.model_instructor.handle_request(request)
             elif request_type.startswith("conditioning"):
@@ -202,6 +209,7 @@ class WorkersInterface:
             instructors = [
                 ("device", self.device_instructor),
                 ("communication", self.communication_instructor),
+                ("memory", self.memory_instructor),
                 ("model", self.model_instructor),
                 ("conditioning", self.conditioning_instructor),
                 ("inference", self.inference_instructor),
@@ -233,6 +241,7 @@ class WorkersInterface:
                 self.inference_instructor,
                 self.conditioning_instructor,
                 self.model_instructor,
+                self.memory_instructor,
                 self.communication_instructor,
                 self.device_instructor
             ]

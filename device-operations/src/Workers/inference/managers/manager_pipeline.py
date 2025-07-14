@@ -65,6 +65,14 @@ class PipelineManager:
         self.task_queue: List[PipelineTask] = []
         self.pipeline_stats: Dict[str, Any] = {}
         
+        # Task management  
+        self.active_tasks: Dict[str, PipelineTask] = {}
+        self.completed_tasks: Dict[str, Dict[str, Any]] = {}
+        
+        # Configuration
+        self.max_concurrent_tasks = self.config.get("max_concurrent_tasks", 2)
+        self.task_timeout = self.config.get("task_timeout", 600)  # 10 minutes
+        
     async def initialize(self) -> bool:
         """Initialize pipeline manager."""
         try:
@@ -82,8 +90,94 @@ class PipelineManager:
             "active_pipelines": len(self.active_pipelines),
             "queued_tasks": len(self.task_queue),
             "pipeline_stats": self.pipeline_stats,
-            "supported_types": ["text2img", "img2img", "inpainting", "controlnet", "lora"]
+            "supported_types": ["text2img", "img2img", "inpainting", "controlnet", "lora"],
+            "supported_models": ["stable-diffusion-xl", "stable-diffusion-v1-5", "flux"],
+            "max_batch_size": 8,
+            "max_concurrent": 3,
+            "max_width": 2048,
+            "max_height": 2048
         }
+
+    async def get_session_status(self, session_id: str) -> Dict[str, Any]:
+        """Get status of a specific session."""
+        # Check if session is in active tasks
+        if session_id in self.active_tasks:
+            task = self.active_tasks[session_id]
+            return {
+                "session_id": session_id,
+                "status": "running",
+                "task_type": task.pipeline_type,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "progress": 0.5  # Mock progress
+            }
+        
+        # Check if session is in completed tasks
+        if session_id in self.completed_tasks:
+            completed = self.completed_tasks[session_id]
+            return {
+                "session_id": session_id,
+                "status": "completed" if completed["result"].success else "failed",
+                "task_type": completed["task"].pipeline_type,
+                "created_at": completed["task"].created_at.isoformat() if completed["task"].created_at else None,
+                "completed_at": completed["completed_at"].isoformat(),
+                "result": completed["result"].data if completed["result"].success else None,
+                "error": completed["result"].error if not completed["result"].success else None
+            }
+        
+        # Session not found
+        return {
+            "session_id": session_id,
+            "status": "not_found",
+            "error": f"Session {session_id} not found"
+        }
+
+    async def cancel_session(self, session_id: str, reason: str = "user_requested") -> Dict[str, Any]:
+        """Cancel a session."""
+        cancelled = False
+        
+        # Remove from queue if present
+        original_queue_length = len(self.task_queue)
+        self.task_queue = [task for task in self.task_queue if task.task_id != session_id]
+        if len(self.task_queue) < original_queue_length:
+            cancelled = True
+        
+        # Remove from active tasks if present
+        if session_id in self.active_tasks:
+            del self.active_tasks[session_id]
+            cancelled = True
+        
+        return {
+            "session_id": session_id,
+            "cancelled": cancelled,
+            "reason": reason,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    async def get_active_sessions(self) -> List[Dict[str, Any]]:
+        """Get list of all active sessions."""
+        sessions = []
+        
+        # Add queued tasks
+        for task in self.task_queue:
+            sessions.append({
+                "session_id": task.task_id,
+                "status": "queued",
+                "task_type": task.pipeline_type,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "priority": task.priority
+            })
+        
+        # Add active tasks
+        for session_id, task in self.active_tasks.items():
+            sessions.append({
+                "session_id": session_id,
+                "status": "running",
+                "task_type": task.pipeline_type,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "priority": task.priority
+            })
+        
+        return sessions
         self.model_loader: Optional[ModelLoader] = None
         
         # Task management

@@ -25,7 +25,7 @@ public class ControllerInferenceTests
     {
         _mockServiceInference = new Mock<IServiceInference>();
         _mockLogger = new Mock<ILogger<ControllerInference>>();
-        _controller = new ControllerInference(_mockLogger.Object);
+        _controller = new ControllerInference(_mockLogger.Object, _mockServiceInference.Object);
     }
 
     #region Inference Capabilities Tests
@@ -33,7 +33,27 @@ public class ControllerInferenceTests
     [Fact]
     public async Task GetInferenceCapabilities_ShouldReturnOk_WhenServiceReturnsSuccess()
     {
-        // Act - The controller returns mock data directly
+        // Arrange
+        var expectedResponse = new GetInferenceCapabilitiesResponse
+        {
+            SupportedInferenceTypes = new List<string> { "TextToImage", "ImageToImage" },
+            SupportedModels = new List<ModelInfo>
+            {
+                new ModelInfo
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = "Test Model",
+                    Type = ModelType.Flux,
+                    Status = ModelStatus.Available
+                }
+            }
+        };
+        
+        var serviceResponse = ApiResponse<GetInferenceCapabilitiesResponse>.CreateSuccess(expectedResponse);
+        _mockServiceInference.Setup(s => s.GetInferenceCapabilitiesAsync())
+            .ReturnsAsync(serviceResponse);
+
+        // Act
         var result = await _controller.GetInferenceCapabilities();
 
         // Assert
@@ -43,6 +63,9 @@ public class ControllerInferenceTests
         response.Data.Should().NotBeNull();
         response.Data!.SupportedInferenceTypes.Should().NotBeEmpty();
         response.Data!.SupportedModels.Should().NotBeEmpty();
+        
+        // Verify service was called
+        _mockServiceInference.Verify(s => s.GetInferenceCapabilitiesAsync(), Times.Once);
     }
 
     [Fact]
@@ -50,8 +73,18 @@ public class ControllerInferenceTests
     {
         // Arrange
         var deviceId = Guid.NewGuid();
+        var expectedResponse = new GetInferenceCapabilitiesDeviceResponse
+        {
+            DeviceId = deviceId,
+            DeviceName = "Test Device",
+            SupportedInferenceTypes = new List<string> { "TextToImage", "ImageToImage" }
+        };
+        
+        var serviceResponse = ApiResponse<GetInferenceCapabilitiesDeviceResponse>.CreateSuccess(expectedResponse);
+        _mockServiceInference.Setup(s => s.GetInferenceCapabilitiesAsync(deviceId.ToString()))
+            .ReturnsAsync(serviceResponse);
 
-        // Act - The controller returns mock data directly
+        // Act
         var result = await _controller.GetInferenceCapabilitiesDevice(deviceId);
 
         // Assert
@@ -61,6 +94,9 @@ public class ControllerInferenceTests
         response.Data.Should().NotBeNull();
         response.Data!.DeviceId.Should().Be(deviceId);
         response.Data!.SupportedInferenceTypes.Should().NotBeEmpty();
+        
+        // Verify service was called
+        _mockServiceInference.Verify(s => s.GetInferenceCapabilitiesAsync(deviceId.ToString()), Times.Once);
     }
 
     [Fact]

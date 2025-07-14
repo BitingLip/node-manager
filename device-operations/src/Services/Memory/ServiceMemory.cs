@@ -133,7 +133,9 @@ namespace DeviceOperations.Services.Memory
         {
             try
             {
-                _logger.LogInformation("Getting system memory status using DirectML");
+                _logger.LogInformation("Getting system memory status using DirectML and Python coordination");
+                
+                // Get DirectML memory information
                 await RefreshMemoryCacheAsync();
 
                 var totalMemory = 0L;
@@ -152,6 +154,74 @@ namespace DeviceOperations.Services.Memory
                     }
                 }
 
+                // Get Python memory status for full coordination (Phase 4 Implementation)
+                Dictionary<string, object>? pythonMemoryStatus = null;
+                try
+                {
+                    var command = new 
+                    { 
+                        request_id = Guid.NewGuid().ToString(),
+                        action = "memory.get_status",
+                        data = new { 
+                            device_id = "all",
+                            include_allocations = true,
+                            include_usage_stats = true,
+                            include_fragmentation = false
+                        }
+                    };
+
+                    var result = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                        PythonWorkerTypes.MEMORY,
+                        JsonSerializer.Serialize(command),
+                        command
+                    );
+
+                    var pythonResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(result.ToString()!);
+                    
+                    // Extract coordinated data from Python response
+                    if (pythonResponse != null)
+                    {
+                        var success = pythonResponse.GetValueOrDefault("success", false) as bool? ?? false;
+                        if (success)
+                        {
+                            pythonMemoryStatus = pythonResponse.GetValueOrDefault("data", new Dictionary<string, object>()) as Dictionary<string, object>;
+                        }
+                    }
+                        
+                    // Coordinate Python memory data with DirectML data
+                    if (pythonMemoryStatus != null)
+                    {
+                        // Update totals with Python-coordinated values if available
+                        if (pythonMemoryStatus.ContainsKey("usage_stats"))
+                        {
+                            var usageStats = pythonMemoryStatus["usage_stats"] as Dictionary<string, object>;
+                            if (usageStats != null)
+                            {
+                                // Apply unit conversion (Phase 2 finding: standardize MB to bytes)
+                                var pythonUsedMb = usageStats.GetValueOrDefault("used_memory_mb", 0.0) as double? ?? 0.0;
+                                var pythonTotalMb = usageStats.GetValueOrDefault("total_memory_mb", 0.0) as double? ?? 0.0;
+                                
+                                if (pythonUsedMb > 0 && pythonTotalMb > 0)
+                                {
+                                    // Convert MB to bytes for standardization
+                                    var pythonUsedBytes = (long)(pythonUsedMb * 1024 * 1024);
+                                    var pythonTotalBytes = (long)(pythonTotalMb * 1024 * 1024);
+                                    
+                                    // Coordinate values (take max for accurate reporting)
+                                    usedMemory = Math.Max(usedMemory, pythonUsedBytes);
+                                    totalMemory = Math.Max(totalMemory, pythonTotalBytes);
+                                    availableMemory = totalMemory - usedMemory;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to get Python memory status coordination, using DirectML only");
+                    pythonMemoryStatus = new Dictionary<string, object> { ["error"] = ex.Message };
+                }
+
                 var response = new GetMemoryStatusResponse
                 {
                     MemoryStatus = new Dictionary<string, object>
@@ -162,7 +232,9 @@ namespace DeviceOperations.Services.Memory
                         ["utilization_percentage"] = totalMemory > 0 ? (usedMemory / (double)totalMemory * 100.0) : 0.0,
                         ["device_count"] = deviceCount,
                         ["last_updated"] = DateTime.UtcNow,
-                        ["memory_source"] = "DirectML_VorticeWindows"
+                        ["memory_source"] = "DirectML_Python_Coordinated_Phase4",
+                        ["python_coordination"] = pythonMemoryStatus ?? new Dictionary<string, object>(),
+                        ["coordination_status"] = pythonMemoryStatus?.ContainsKey("error") != true ? "success" : "fallback"
                     }
                 };
 
@@ -227,31 +299,139 @@ namespace DeviceOperations.Services.Memory
 
         public async Task<ApiResponse<PostMemoryAllocateResponse>> PostMemoryAllocateAsync(PostMemoryAllocateRequest request)
         {
-            // Implementation details...
-            await Task.Delay(1);
-            return ApiResponse<PostMemoryAllocateResponse>.CreateSuccess(new PostMemoryAllocateResponse
+            try
             {
-                AllocationId = Guid.NewGuid().ToString(),
-                Success = true
-            });
+                _logger.LogInformation("Allocating memory: {SizeBytes} bytes of type: {MemoryType}", request.SizeBytes, request.MemoryType);
+
+                // Create memory command for allocation
+                var command = new 
+                { 
+                    request_id = Guid.NewGuid().ToString(),
+                    action = "memory.allocate",
+                    data = new { 
+                        size_bytes = request.SizeBytes,
+                        memory_type = request.MemoryType
+                    }
+                };
+
+                // Execute Python coordination through memory worker
+                var result = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MEMORY,
+                    JsonSerializer.Serialize(command),
+                    command
+                );
+
+                // Process response and map to C# models
+                var pythonResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(result.ToString()!);
+                
+                var response = new PostMemoryAllocateResponse
+                {
+                    AllocationId = pythonResponse?.GetValueOrDefault("allocation_id", Guid.NewGuid().ToString()) as string ?? Guid.NewGuid().ToString(),
+                    Success = pythonResponse?.GetValueOrDefault("success", false) as bool? ?? false
+                };
+                
+                _logger.LogInformation("Memory allocation completed: {AllocationId}, Success: {Success}", response.AllocationId, response.Success);
+                
+                return ApiResponse<PostMemoryAllocateResponse>.CreateSuccess(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to allocate memory: {SizeBytes} bytes", request.SizeBytes);
+                return ApiResponse<PostMemoryAllocateResponse>
+                    .CreateError("MEMORY_ALLOCATION_ERROR", ex.Message, 500);
+            }
         }
 
         public async Task<ApiResponse<DeleteMemoryDeallocateResponse>> DeleteMemoryDeallocateAsync(string allocationId)
         {
-            // Implementation details...
-            await Task.Delay(1);
-            return ApiResponse<DeleteMemoryDeallocateResponse>.CreateSuccess(new DeleteMemoryDeallocateResponse { Success = true });
+            try
+            {
+                _logger.LogInformation("Deallocating memory for allocation: {AllocationId}", allocationId);
+
+                // Create memory command for deallocation
+                var command = new 
+                { 
+                    request_id = Guid.NewGuid().ToString(),
+                    action = "memory.deallocate",
+                    data = new { 
+                        allocation_id = allocationId
+                    }
+                };
+
+                // Execute Python coordination through memory worker
+                var result = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MEMORY,
+                    JsonSerializer.Serialize(command),
+                    command
+                );
+
+                // Process response and map to C# models
+                var pythonResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(result.ToString()!);
+                
+                var response = new DeleteMemoryDeallocateResponse
+                {
+                    Success = pythonResponse?.GetValueOrDefault("success", false) as bool? ?? false,
+                    Message = pythonResponse?.GetValueOrDefault("message", "Memory deallocation completed") as string ?? "Memory deallocation completed"
+                };
+                
+                _logger.LogInformation("Memory deallocation completed for {AllocationId}: {Success}", allocationId, response.Success);
+                
+                return ApiResponse<DeleteMemoryDeallocateResponse>.CreateSuccess(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to deallocate memory for allocation: {AllocationId}", allocationId);
+                return ApiResponse<DeleteMemoryDeallocateResponse>
+                    .CreateError("MEMORY_DEALLOCATION_ERROR", ex.Message, 500);
+            }
         }
 
         public async Task<ApiResponse<PostMemoryTransferResponse>> PostMemoryTransferAsync(PostMemoryTransferRequest request)
         {
-            // Implementation details...
-            await Task.Delay(1);
-            return ApiResponse<PostMemoryTransferResponse>.CreateSuccess(new PostMemoryTransferResponse
+            try
             {
-                TransferId = Guid.NewGuid().ToString(),
-                Success = true
-            });
+                _logger.LogInformation("Transferring memory: {SizeBytes} bytes from {SourceDeviceId} to {TargetDeviceId}", 
+                    request.SizeBytes, request.SourceDeviceId, request.TargetDeviceId);
+
+                // Create memory command for transfer
+                var command = new 
+                { 
+                    request_id = Guid.NewGuid().ToString(),
+                    action = "memory.transfer",
+                    data = new { 
+                        source_device_id = request.SourceDeviceId,
+                        target_device_id = request.TargetDeviceId,
+                        size_bytes = request.SizeBytes
+                    }
+                };
+
+                // Execute Python coordination through memory worker
+                var result = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MEMORY,
+                    JsonSerializer.Serialize(command),
+                    command
+                );
+
+                // Process response and map to C# models
+                var pythonResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(result.ToString()!);
+                
+                var response = new PostMemoryTransferResponse
+                {
+                    TransferId = pythonResponse?.GetValueOrDefault("transfer_id", Guid.NewGuid().ToString()) as string ?? Guid.NewGuid().ToString(),
+                    Success = pythonResponse?.GetValueOrDefault("success", false) as bool? ?? false
+                };
+                
+                _logger.LogInformation("Memory transfer initiated: {TransferId}, Success: {Success}", response.TransferId, response.Success);
+                
+                return ApiResponse<PostMemoryTransferResponse>.CreateSuccess(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to transfer memory: {SizeBytes} bytes from {SourceDeviceId} to {TargetDeviceId}", 
+                    request.SizeBytes, request.SourceDeviceId, request.TargetDeviceId);
+                return ApiResponse<PostMemoryTransferResponse>
+                    .CreateError("MEMORY_TRANSFER_ERROR", ex.Message, 500);
+            }
         }
 
         public async Task<ApiResponse<PostMemoryCopyResponse>> PostMemoryCopyAsync(PostMemoryCopyRequest request)
@@ -270,23 +450,156 @@ namespace DeviceOperations.Services.Memory
 
         public async Task<ApiResponse<ResponsesMemory.GetModelMemoryStatusResponse>> GetModelMemoryStatusAsync()
         {
-            // Implementation details...
-            await Task.Delay(1);
-            return ApiResponse<ResponsesMemory.GetModelMemoryStatusResponse>.CreateSuccess(new ResponsesMemory.GetModelMemoryStatusResponse());
+            try
+            {
+                _logger.LogInformation("Getting model memory status information");
+
+                // Create memory command for model memory status
+                var command = new 
+                { 
+                    request_id = Guid.NewGuid().ToString(),
+                    action = "memory.get_model_status",
+                    data = new { 
+                        include_model_details = true,
+                        include_cache_info = true,
+                        include_optimization_status = true
+                    }
+                };
+
+                // Execute Python coordination through memory worker
+                var result = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MEMORY,
+                    JsonSerializer.Serialize(command),
+                    command
+                );
+
+                // Process response and map to C# models
+                var pythonResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(result.ToString()!);
+                
+                var response = new ResponsesMemory.GetModelMemoryStatusResponse
+                {
+                    PressureLevel = pythonResponse?.GetValueOrDefault("pressure_level", 0.0) as double? ?? 0.0,
+                    AvailableOperations = pythonResponse?.GetValueOrDefault("available_operations", new List<string>()) as List<string> ?? new List<string>(),
+                    OptimizationRecommendations = pythonResponse?.GetValueOrDefault("optimization_recommendations", new List<string>()) as List<string> ?? new List<string>(),
+                    LastSynchronized = DateTime.UtcNow
+                };
+                
+                _logger.LogInformation("Model memory status retrieved: pressure level {PressureLevel}%, {OperationCount} available operations", 
+                    response.PressureLevel, response.AvailableOperations.Count);
+                
+                return ApiResponse<ResponsesMemory.GetModelMemoryStatusResponse>.CreateSuccess(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get model memory status");
+                return ApiResponse<ResponsesMemory.GetModelMemoryStatusResponse>
+                    .CreateError("MODEL_MEMORY_STATUS_ERROR", ex.Message, 500);
+            }
         }
 
         public async Task<ApiResponse<ResponsesMemory.PostTriggerModelMemoryOptimizationResponse>> TriggerModelMemoryOptimizationAsync(RequestsMemory.PostTriggerModelMemoryOptimizationRequest request)
         {
-            // Implementation details...
-            await Task.Delay(1);
-            return ApiResponse<ResponsesMemory.PostTriggerModelMemoryOptimizationResponse>.CreateSuccess(new ResponsesMemory.PostTriggerModelMemoryOptimizationResponse());
+            try
+            {
+                _logger.LogInformation("Triggering model memory optimization with strategy: {Strategy}", request.Strategy);
+
+                // Create memory command based on Phase 4 JSON structure analysis
+                var command = new 
+                { 
+                    request_id = Guid.NewGuid().ToString(),
+                    action = "memory.model_optimize",
+                    data = new { 
+                        target_pressure_level = request.TargetPressureLevel,
+                        strategy = request.Strategy,
+                        max_models_to_unload = request.MaxModelsToUnload,
+                        min_memory_to_free = request.MinMemoryToFree,
+                        force_optimization = request.ForceOptimization,
+                        exclude_models = request.ExcludeModels,
+                        max_optimization_time_ms = request.MaxOptimizationTimeMs
+                    }
+                };
+
+                // Execute Python coordination through memory worker
+                var result = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MEMORY,
+                    JsonSerializer.Serialize(command),
+                    command
+                );
+
+                // Process response and map to C# models
+                var pythonResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(result.ToString()!);
+                
+                var response = new ResponsesMemory.PostTriggerModelMemoryOptimizationResponse
+                {
+                    OptimizationTriggered = pythonResponse?.GetValueOrDefault("success", false) as bool? ?? false,
+                    OptimizationStrategy = request.Strategy.ToString(),
+                    MemoryFreed = pythonResponse?.GetValueOrDefault("memory_freed_bytes", 0L) as long? ?? 0L,
+                    ModelsUnloaded = pythonResponse?.GetValueOrDefault("models_unloaded", new List<string>()) as List<string> ?? new List<string>(),
+                    PerformanceImpact = pythonResponse?.GetValueOrDefault("performance_impact", 0.0) as double? ?? 0.0,
+                    OptimizationTimeMs = pythonResponse?.GetValueOrDefault("optimization_time_ms", 0.0) as double? ?? 0.0,
+                    Message = pythonResponse?.GetValueOrDefault("message", "Model memory optimization completed") as string ?? "Model memory optimization completed"
+                };
+                
+                _logger.LogInformation("Model memory optimization completed with strategy {Strategy}: {MemoryFreed} bytes freed", 
+                    request.Strategy, response.MemoryFreed);
+                
+                return ApiResponse<ResponsesMemory.PostTriggerModelMemoryOptimizationResponse>.CreateSuccess(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to trigger model memory optimization with strategy {Strategy}", request.Strategy);
+                return ApiResponse<ResponsesMemory.PostTriggerModelMemoryOptimizationResponse>
+                    .CreateError("MODEL_MEMORY_OPTIMIZATION_ERROR", ex.Message, 500);
+            }
         }
 
         public async Task<ApiResponse<ResponsesMemory.GetMemoryPressureResponse>> GetMemoryPressureAsync()
         {
-            // Implementation details...
-            await Task.Delay(1);
-            return ApiResponse<ResponsesMemory.GetMemoryPressureResponse>.CreateSuccess(new ResponsesMemory.GetMemoryPressureResponse());
+            try
+            {
+                _logger.LogInformation("Getting memory pressure information");
+
+                // Create memory command for pressure analysis
+                var command = new 
+                { 
+                    request_id = Guid.NewGuid().ToString(),
+                    action = "memory.get_pressure",
+                    data = new { 
+                        include_device_stats = true,
+                        include_model_pressure = true
+                    }
+                };
+
+                // Execute Python coordination through memory worker
+                var result = await _pythonWorkerService.ExecuteAsync<object, dynamic>(
+                    PythonWorkerTypes.MEMORY,
+                    JsonSerializer.Serialize(command),
+                    command
+                );
+
+                // Process response and map to C# models
+                var pythonResponse = JsonSerializer.Deserialize<Dictionary<string, object>>(result.ToString()!);
+                
+                var response = new ResponsesMemory.GetMemoryPressureResponse
+                {
+                    DeviceId = pythonResponse?.GetValueOrDefault("device_id", null) as string,
+                    PressureLevel = pythonResponse?.GetValueOrDefault("pressure_level", 0.0) as double? ?? 0.0,
+                    AvailableMemory = pythonResponse?.GetValueOrDefault("available_memory_bytes", 0L) as long? ?? 0L,
+                    TotalMemory = pythonResponse?.GetValueOrDefault("total_memory_bytes", 0L) as long? ?? 0L,
+                    UtilizationPercentage = pythonResponse?.GetValueOrDefault("utilization_percentage", 0.0) as double? ?? 0.0,
+                    RecommendedActions = pythonResponse?.GetValueOrDefault("recommended_actions", new List<string>()) as List<string> ?? new List<string>()
+                };
+                
+                _logger.LogInformation("Memory pressure analysis completed: {PressureLevel}% pressure", response.PressureLevel);
+                
+                return ApiResponse<ResponsesMemory.GetMemoryPressureResponse>.CreateSuccess(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get memory pressure information");
+                return ApiResponse<ResponsesMemory.GetMemoryPressureResponse>
+                    .CreateError("MEMORY_PRESSURE_ERROR", ex.Message, 500);
+            }
         }
 
         #endregion
