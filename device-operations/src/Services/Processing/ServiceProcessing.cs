@@ -1,4 +1,5 @@
 using DeviceOperations.Models.Common;
+using DeviceOperations.Models.Processing;
 using DeviceOperations.Models.Requests;
 using ResponseModels = DeviceOperations.Models.Responses;
 using DeviceOperations.Services.Python;

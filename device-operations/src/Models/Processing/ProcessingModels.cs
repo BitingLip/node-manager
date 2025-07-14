@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace DeviceOperations.Models.Common
+namespace DeviceOperations.Models.Processing
 {
     /// <summary>
     /// Processing workflow definition with steps and requirements

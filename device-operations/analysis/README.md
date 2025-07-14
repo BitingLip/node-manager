@@ -98,14 +98,14 @@ ControllerDevice → ControllerMemory → ControllerModel → ControllerInferenc
 ### Atomic Domain Separation
 Each domain represents a distinct area of responsibility with dedicated controller, service, and worker components:
 
-| Domain | Responsibility | C# Controller | C# Service | Python Workers |
-|--------|---------------|---------------|------------|----------------|
-| **Device** | Hardware discovery, monitoring, control | ControllerDevice | ServiceDevice | device workers |
-| **Memory** | Memory allocation, monitoring, transfer | ControllerMemory | ServiceMemory | memory workers |
-| **Model** | Model loading, caching, VRAM management | ControllerModel | ServiceModel | model workers |
-| **Inference** | ML inference execution and validation | ControllerInference | ServiceInference | inference workers |
-| **Processing** | Workflow and batch operation coordination | ControllerProcessing | ServiceProcessing | processing coordination |
-| **Postprocessing** | Image enhancement, upscaling, safety | ControllerPostprocessing | ServicePostprocessing | postprocessing workers |
+| Domain              | Responsibility                             | C# Controller             | C# Service              | Python Workers           |
+|---------------------|--------------------------------------------|---------------------------|-------------------------|--------------------------|
+| **Device**          | Hardware discovery, monitoring, control    | ControllerDevice          | ServiceDevice           | device workers           |
+| **Memory**          | Memory allocation, monitoring, transfer    | ControllerMemory          | ServiceMemory           | memory workers           |
+| **Model**           | Model loading, caching, VRAM management    | ControllerModel           | ServiceModel            | model workers            |
+| **Inference**       | ML inference execution and validation      | ControllerInference       | ServiceInference        | inference workers        |
+| **Processing**      | Workflow and batch operation coordination  | ControllerProcessing      | ServiceProcessing       | processing coordination  |
+| **Postprocessing**  | Image enhancement, upscaling, safety       | ControllerPostprocessing  | ServicePostprocessing   | postprocessing workers   |
 
 ### Service Interaction Patterns
 - **Atomic Controllers**: Controllers only interact with their respective service
@@ -117,23 +117,29 @@ Each domain represents a distinct area of responsibility with dedicated controll
 
 ### C# .NET Components
 **Word Pattern**: `Type` + `Domain` + `Property`
-- **Controllers**: PascalCase `ControllerDevice`, `ControllerMemory`
-- **Services**: PascalCase `ServiceDevice`, `ServiceMemory`
-- **Service Interfaces**: PascalCase `IServiceDevice`, `IServiceMemory`
-- **Models**: PascalCase `DeviceInfo`, `MemoryAllocation`
-- **Request Models**: PascalCase `RequestsDevice`, `RequestsMemory`
-- **Response Models**: PascalCase `ResponsesDevice`, `ResponsesMemory`
-- **Parameters**: camelCase `idDevice`, `allocationId`
-- **Middleware**: PascalCase `MiddlewareErrorHandling`, `MiddlewareLogging`
-- **Extensions**: PascalCase `ExtensionsServiceCollection`
+
+| Component Type        | Case Convention | Pattern                       | Examples                                      |
+|-----------------------|-----------------|-------------------------------|-----------------------------------------------|
+| **Controllers**       | PascalCase      | `Controller` + `Domain`       | `ControllerDevice`, `ControllerMemory`        |
+| **Services**          | PascalCase      | `Service` + `Domain`          | `ServiceDevice`, `ServiceMemory`              |
+| **Service Interfaces**| PascalCase      | `IService` + `Domain`         | `IServiceDevice`, `IServiceMemory`            |
+| **Models**            | PascalCase      | `Domain` + `Property`         | `DeviceInfo`, `MemoryAllocation`              |
+| **Request Models**    | PascalCase      | `Requests` + `Domain`         | `RequestsDevice`, `RequestsMemory`            |
+| **Response Models**   | PascalCase      | `Responses` + `Domain`        | `ResponsesDevice`, `ResponsesMemory`          |
+| **Parameters**        | camelCase       | `property` + `Domain`         | `idDevice`, `allocationId`                    |
+| **Middleware**        | PascalCase      | `Middleware` + `Property`     | `MiddlewareErrorHandling`, `MiddlewareLogging`|
+| **Extensions**        | PascalCase      | `Extensions` + `Property`     | `ExtensionsServiceCollection`                 |
 
 ### Python Worker Components  
 **Word Pattern**: `type` + `domain` + `property`
-- **Interfaces**: snake_case `interface_device`, `interface_memory`
-- **Instructors**: snake_case `instructor_device`, `instructor_memory`
-- **Managers**: snake_case `manager_device`, `manager_memory`
-- **Workers**: snake_case `worker_device`, `worker_memory`
-- **Files**: snake_case `device_monitor.py`, `memory_allocator.py`
+
+| Component Type  | Case Convention | Pattern                        | Examples                                    |
+|-----------------|-----------------|--------------------------------|---------------------------------------------|
+| **Interfaces**  | snake_case      | `interface_` + `domain`        | `interface_device`, `interface_memory`      |
+| **Instructors** | snake_case      | `instructor_` + `domain`       | `instructor_device`, `instructor_memory`    |
+| **Managers**    | snake_case      | `manager_` + `domain`          | `manager_device`, `manager_memory`          |
+| **Workers**     | snake_case      | `worker_` + `domain`           | `worker_device`, `worker_memory`            |
+| **Files**       | snake_case      | `domain_` + `property` + `.py` | `device_monitor.py`, `memory_allocator.py`  |
 
 ## Request Lifecycle & Execution Flow
 
@@ -182,192 +188,234 @@ Workflow Coordination (ControllerProcessing):
 ## Project Structure
 
 ```
-logs/                                           # Logs ✅ implemented
-models/                                         # Model binaries and weights ✅ implemented
-outputs/                                        # Generated outputs from inference ✅ implemented
+logs/                                           # Logs
+models/                                         # Model binaries and weights
+outputs/                                        # Generated outputs from inference
 device-operations/
-├── Program.cs                                  # Main application entry point and API configuration ⚠️ Needs modification
-├── DeviceOperations.csproj                     # .NET 8 project file with ML.NET and DirectML dependencies ⚠️ Needs modification
-├── device-operations.sln                       # Visual Studio solution file ⚠️ Needs modification
+├── Program.cs                                  # Main application entry point and API configuration
+├── DeviceOperations.csproj                     # .NET 8 project file with ML.NET and DirectML dependencies
+├── device-operations.sln                       # Visual Studio solution file 
 │
-├── bin/                                        # Compiled binaries and runtime files ✅ Completely implemented
+├── bin/                                        # Compiled binaries and runtime files
 │   ├── Debug/                                  # Debug build outputs
 │   └── Release/                                # Release build outputs   
 │         
-├── config/                                     # Configuration files ✅ Completely implemented
+├── config/                                     # Configuration files
 │   ├── appsettings.json                        # Base application settings
 │   ├── appsettings.Development.json            # Development environment settings
 │   ├── appsettings.Production.json             # Production environment settings
 │   └── workers_config.json                     # Python worker configuration
-│         
-├── src/                                        # Source code directory
-│   ├── Controllers/                            # API Controllers ⚠️ Needs to be Created
-│   │   ├── ControllerDevice.cs                 # Device management endpoints
-│   │   ├── ControllerMemory.cs                 # Memory allocation and monitoring endpoints
-│   │   ├── ControllerModel.cs                  # Model loading/unloading/caching endpoints
-│   │   ├── ControllerProcessing.cs             # Processing pipeline coordination endpoints
-│   │   ├── ControllerInference.cs              # Inference execution endpoints
-│   │   └── ControllerPostprocessing.cs         # Post-processing operations endpoints
-│   ├── Models/                                 # Data models and DTOs ⚠️ Needs to be Created
-│   │   ├── Common/
-│   │   │   ├── DeviceInfo.cs                   # Device information model
-│   │   │   ├── MemoryInfo.cs                   # Memory status and allocation models
-│   │   │   ├── ModelInfo.cs                    # Model metadata and status models
-│   │   │   ├── InferenceSession.cs             # Inference session tracking model
-│   │   │   ├── ApiResponse.cs                  # Standardized API response wrapper
-│   │   │   └── ErrorDetails.cs                 # Error response model
-│   │   ├── Requests/
-│   │   │   ├── RequestsDevice.cs               # Device operation request models
-│   │   │   ├── RequestsMemory.cs               # Memory allocation request models
-│   │   │   ├── RequestsModel.cs                # Model loading/caching request models
-│   │   │   ├── RequestsInference.cs            # Inference execution request models
-│   │   │   └── RequestsPostprocessing.cs       # Post-processing request models
-│   │   └── Responses/
-│   │       ├── ResponsesDevice.cs              # Device operation response models
-│   │       ├── ResponsesMemory.cs              # Memory status response models
-│   │       ├── ResponsesModel.cs               # Model status/cache response models
-│   │       ├── ResponsesInference.cs           # Inference result response models
-│   │       └── ResponsesPostprocessing.cs      # Post-processing result response models
-│   ├── Services/                               # Business logic services  ⚠️ Needs to be Created
-│   │   ├── Device/
-│   │   │   ├── IServiceDevice.cs               # Device service interface
-│   │   │   └── ServiceDevice.cs                # Device service implementation
-│   │   ├── Memory/
-│   │   │   ├── IServiceMemory.cs               # Memory service interface
-│   │   │   └── ServiceMemory.cs                # Memory service implementation
-│   │   │   ├── IServiceModel.cs                # Model service interface
-│   │   │   └── ServiceModel.cs                 # Model service implementation
-│   │   ├── Processing/
-│   │   │   ├── IServiceProcessing.cs           # Processing service interface
-│   │   │   └── ServiceProcessing.cs            # Processing service implementation
-│   │   ├── Inference/
-│   │   │   ├── IServiceInference.cs            # Inference service interface
-│   │   │   └── ServiceInference.cs             # Inference service implementation
-│   │   ├── Postprocessing/
-│   │   │   ├── IServicePostprocessing.cs       # Post-processing service interface
-│   │   │   └── ServicePostprocessing.cs        # Post-processing service implementation
-│   │   ├── Environment/                        # Python environment management
-│   │   │   ├── IServiceEnvironment.cs          # Environment service interface
-│   │   │   └── ServiceEnvironment.cs           # Python venv service - creates venv in src/workers/venv based on requirements.txt
-│   │   └── Python/                             # Python worker communication
-│   │       ├── IPythonWorkerService.cs         # Python worker communication interface
-│   │       └── PythonWorkerService.cs          # STDIN/STDOUT communication with Python workers
-│   │   
-│   ├── Workers/                                # Python worker integration ✅ Completely implemented
-│   │   ├── __init__.py                         # Package initialization
-│   │   ├── main.py                             # Main entry point for worker processes
-│   │   ├── interface_main.py                   # Unified interface for all worker types
-│   │   ├── instructors/                        # Instruction coordination layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── instructor_device.py           # Device management coordinator
-│   │   │   ├── instructor_communication.py    # Communication management coordinator
-│   │   │   ├── instructor_model.py            # Model management coordinator
-│   │   │   ├── instructor_conditioning.py     # Conditioning tasks coordinator
-│   │   │   ├── instructor_inference.py        # Inference management coordinator
-│   │   │   ├── instructor_scheduler.py        # Scheduler management coordinator
-│   │   │   └── instructor_postprocessing.py   # Post-processing coordinator
-│   │   ├── device/                            # Device management layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── interface_device.py            # Device interface
-│   │   │   └── managers/
-│   │   │       ├── __init__.py                 
-│   │   │       └── manager_device.py          # Device management implementation
-│   │   ├── communication/                     # Communication management layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── interface_communication.py     # Communication interface
-│   │   │   └── managers/
-│   │   │       ├── __init__.py                 
-│   │   │       └── manager_communication.py   # Communication implementation
-│   │   ├── models/                            # Model management layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── interface_model.py             # Model operations interface
-│   │   │   ├── managers/                      # Model resource managers
-│   │   │   │   ├── __init__.py                 
-│   │   │   │   ├── manager_vae.py              # VAE model management
-│   │   │   │   ├── manager_encoder.py          # Text encoder management
-│   │   │   │   ├── manager_unet.py             # UNet model management
-│   │   │   │   ├── manager_tokenizer.py        # Tokenizer management
-│   │   │   │   └── manager_lora.py             # LoRA adapter management
-│   │   │   └── workers/                       # Model execution workers
-│   │   │       ├── __init__.py                 
-│   │   │       └── worker_memory.py            # Memory management worker
-│   │   ├── conditioning/                      # Conditioning processing layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── interface_conditioning.py      # Conditioning interface
-│   │   │   ├── managers/                      # Conditioning resource managers
-│   │   │   │   ├── __init__.py                 
-│   │   │   │   └── manager_conditioning.py    # Conditioning lifecycle management
-│   │   │   └── workers/                       # Conditioning execution workers
-│   │   │       ├── __init__.py                 
-│   │   │       ├── worker_prompt_processor.py  # Prompt processing worker
-│   │   │       ├── worker_controlnet.py        # ControlNet conditioning worker
-│   │   │       └── worker_img2img.py           # Image-to-image conditioning worker
-│   │   ├── inference/                         # Inference processing layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── interface_inference.py         # Inference interface
-│   │   │   ├── managers/                      # Inference resource managers
-│   │   │   │   ├── __init__.py                 
-│   │   │   │   ├── manager_batch.py            # Batch processing management
-│   │   │   │   ├── manager_pipeline.py         # Pipeline lifecycle management
-│   │   │   │   └── manager_memory.py           # Memory optimization management
-│   │   │   └── workers/                       # Inference execution workers
-│   │   │       ├── __init__.py                 
-│   │   │       ├── worker_sdxl.py              # SDXL inference worker
-│   │   │       ├── worker_controlnet.py        # ControlNet inference worker
-│   │   │       └── worker_lora.py              # LoRA inference worker
-│   │   ├── schedulers/                        # Scheduler management layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── interface_scheduler.py         # Scheduler interface
-│   │   │   ├── managers/                      # Scheduler resource managers
-│   │   │   │   ├── __init__.py                 
-│   │   │   │   ├── manager_factory.py          # Scheduler factory management
-│   │   │   │   └── manager_scheduler.py        # Scheduler lifecycle management
-│   │   │   └── workers/                       # Scheduler execution workers
-│   │   │       ├── __init__.py                 
-│   │   │       ├── worker_ddim.py              # DDIM scheduler worker
-│   │   │       ├── worker_dpm_plus_plus.py     # DPM++ scheduler worker
-│   │   │       └── worker_euler.py             # Euler scheduler worker
-│   │   ├── postprocessing/                    # Post-processing layer
-│   │   │   ├── __init__.py                     
-│   │   │   ├── interface_postprocessing.py    # Post-processing interface
-│   │   │   ├── managers/                      # Post-processing resource managers
-│   │   │   │   ├── __init__.py                 
-│   │   │   │   └── manager_postprocessing.py  # Post-processing lifecycle management
-│   │   │   └── workers/                       # Post-processing execution workers
-│   │   │       ├── __init__.py                 
-│   │   │       ├── worker_upscaler.py          # Image upscaling worker
-│   │   │       ├── worker_image_enhancer.py    # Image enhancement worker
-│   │   │       └── worker_safety_checker.py    # Safety checking worker
-│   │   ├── utilities/                         # Support utilities layer
-│   │   │   ├── __init__.py                     
-│   │   │   └── dml_patch.py                    # DirectML patches and CUDA interception
-│   │   ├── workers_config.json                # Hierarchical configuration template
-│   │   ├── compatibility.py                   # Backward compatibility layer
-│   │   ├── migration_backup/                  # Migration backup directory
-│   │   └── __pycache__/                       # Python bytecode cache
-│   ├── Extensions/                             # Extension methods and utilities ⚠️ Needs to be Created
-│   │   ├── ExtensionsServiceCollection.cs     # Service registration extensions
-│   │   ├── ExtensionsConfiguration.cs         # Configuration helper extensions
-│   │   └── ExtensionsApplicationBuilder.cs    # Middleware configuration extensions
-│   ├── Middleware/                             # ASP.NET Core middleware ⚠️ Needs to be Created
-│   │   ├── MiddlewareErrorHandling.cs          # Global error handling middleware
-│   │   ├── MiddlewareLogging.cs               # Request/response logging middleware
-│   │   └── MiddlewareAuthentication.cs         # Authentication handling middleware
-│   └── __init__.py                             # Python package initialization
 │
-├── schemas/                                 # API schemas and validation
-│   ├── shema_prompt_submission.json         # Prompt submission validation schema
-│   └── example_prompt.json                  # Example prompt format
+├── schemas/                                    # API schemas and validation
+│   ├── shema_prompt_submission.json            # Prompt submission validation schema
+│   └── example_prompt.json                     # Example prompt format
 │
-├── tests/                                   # Unit and integration tests (currently empty)
+├── tests/                                      # Unit and integration tests (currently empty)
 │
-├── obj/                                     # Build artifacts and temporary files
-│
-├── CLEANUP_COMPLETE.md                      # Cleanup operation completion log
-├── CLEANUP_SUCCESS_SUMMARY.md               # Cleanup success summary
-└── RENAMING_COMPLETE.md                     # File renaming operation log
+├── obj/                                        # Build artifacts and temporary files
+│    
+└── src/                                        # Source code directory
+    ├── Controllers/                            # API Controllers
+    │   ├── ControllerDevice.cs                 # Device management endpoints
+    │   ├── ControllerMemory.cs                 # Memory allocation and monitoring endpoints
+    │   ├── ControllerModel.cs                  # Model loading/unloading/caching endpoints
+    │   ├── ControllerProcessing.cs             # Processing pipeline coordination endpoints
+    │   ├── ControllerInference.cs              # Inference execution endpoints
+    │   └── ControllerPostprocessing.cs         # Post-processing operations endpoints
+    │
+    ├── Models/                                 # Data models and DTOs
+    │   ├── Common/                             # Shared models and data structures
+    │   │   ├── ApiResponse.cs                  # Standardized API response wrapper
+    │   │   ├── DeviceInfo.cs                   # Device information model
+    │   │   ├── DeviceInfo_backup.cs            # Device info backup/legacy model
+    │   │   ├── Enums.cs                        # Common enumeration types
+    │   │   ├── ErrorDetails.cs                 # Error response model
+    │   │   ├── InferenceSession.cs             # Inference session tracking model
+    │   │   ├── InferenceTypes.cs               # Inference type definitions
+    │   │   ├── MemoryInfo.cs                   # Memory status and allocation models
+    │   │   └── ModelInfo.cs                    # Model metadata and status models
+    │   │
+    │   ├── Configuration/                      # Configuration models
+    │   │   └── InferenceServiceOptions.cs      # Inference service configuration options
+    │   │
+    │   ├── Inference/                          # Inference-specific models
+    │   │   ├── InpaintingModels.cs             # Inpainting operation models
+    │   │   └── OptimizedPythonWorkerModels.cs  # Optimized Python worker models
+    │   │
+    │   ├── Postprocessing/                     # Postprocessing models
+    │   │   ├── BatchProcessingModels.cs        # Batch processing operation models
+    │   │   └── PostprocessingAnalyticsModels.cs # Postprocessing analytics and metrics
+    │   │
+    │   ├── Processing/                         # Processing workflow models
+    │   │   └── ProcessingModels.cs             # Processing workflow and session models
+    │   │
+    │   ├── Requests/                           # Request DTOs for API endpoints
+    │   │   ├── InferenceBatchRequests.cs       # Batch inference request models
+    │   │   ├── RequestsDevice.cs               # Device operation request models
+    │   │   ├── RequestsDeviceMissing.cs        # Missing device request models
+    │   │   ├── RequestsInference.cs            # Inference execution request models
+    │   │   ├── RequestsMemory.cs               # Memory allocation request models
+    │   │   ├── RequestsModel.cs                # Model loading/caching request models
+    │   │   ├── RequestsPostprocessing.cs       # Post-processing request models
+    │   │   └── RequestsProcessing.cs           # Processing workflow request models
+    │   │
+    │   ├── Responses/                          # Response DTOs for API endpoints
+    │   │   ├── InferenceBatchResponses.cs      # Batch inference response models
+    │   │   ├── ResponsesDevice.cs              # Device operation response models
+    │   │   ├── ResponsesInference.cs           # Inference result response models
+    │   │   ├── ResponsesMemory.cs              # Memory status response models
+    │   │   ├── ResponsesModel.cs               # Model status/cache response models
+    │   │   ├── ResponsesPostprocessing.cs      # Post-processing result response models
+    │   │   └── ResponsesProcessing.cs          # Processing workflow response models
+    │   │
+    │   ├── StubModels.cs                       # Model stubs for development/testing
+    │   └── StubModelsComplete.cs               # Complete model stubs collection
+    │
+    ├── Services/                               # Business logic services
+    │   ├── Device/
+    │   │   ├── IServiceDevice.cs               # Device service interface
+    │   │   └── ServiceDevice.cs                # Device service implementation
+    │   │
+    │   ├── Memory/
+    │   │   ├── IServiceMemory.cs               # Memory service interface
+    │   │   └── ServiceMemory.cs                # Memory service implementation
+    │   │   ├── IServiceModel.cs                # Model service interface
+    │   │   └── ServiceModel.cs                 # Model service implementation
+    │   │
+    │   ├── Processing/
+    │   │   ├── IServiceProcessing.cs           # Processing service interface
+    │   │   └── ServiceProcessing.cs            # Processing service implementation
+    │   │
+    │   ├── Inference/
+    │   │   ├── IServiceInference.cs            # Inference service interface
+    │   │   └── ServiceInference.cs             # Inference service implementation
+    │   │
+    │   ├── Postprocessing/
+    │   │   ├── IServicePostprocessing.cs       # Post-processing service interface
+    │   │   └── ServicePostprocessing.cs        # Post-processing service implementation
+    │   │
+    │   ├── Environment/                        # Python environment management
+    │   │   ├── IServiceEnvironment.cs          # Environment service interface
+    │   │   └── ServiceEnvironment.cs           # Python venv service - creates venv in src/workers/venv based on requirements.txt
+    │   │
+    │   └── Python/                             # Python worker communication
+    │       ├── IPythonWorkerService.cs         # Python worker communication interface
+    │       └── PythonWorkerService.cs          # STDIN/STDOUT communication with Python workers
+    │   
+    ├── Extensions/                             # Extension methods and utilities
+    │   ├── ExtensionsSwagger.cs                # Swagger/OpenAPI documentation extensions
+    │   ├── ExtensionsHealthChecks.cs           # Health checks for services
+    │   ├── ExtensionsServiceCollection.cs      # Service registration extensions
+    │   ├── ExtensionsConfiguration.cs          # Configuration helper extensions
+    │   └── ExtensionsApplicationBuilder.cs     # Middleware configuration extensions
+    │
+    ├── Middleware/                             # ASP.NET Core middleware
+    │   ├── MiddlewareErrorHandling.cs          # Global error handling middleware
+    │   ├── MiddlewareLogging.cs                # Request/response logging middleware
+    │   └── MiddlewareAuthentication.cs         # Authentication handling middleware
+    │   
+    └── Workers/                                # Python worker integration
+        ├── __init__.py                         # Package initialization
+        ├── main.py                             # Main entry point for worker processes
+        ├── interface_main.py                   # Unified interface for all worker types
+        ├── instructors/                        # Instruction coordination layer
+        │   ├── __init__.py                     
+        │   ├── instructor_device.py            # Device management coordinator
+        │   ├── instructor_communication.py     # Communication management coordinator
+        │   ├── instructor_model.py             # Model management coordinator
+        │   ├── instructor_conditioning.py      # Conditioning tasks coordinator
+        │   ├── instructor_inference.py         # Inference management coordinator
+        │   ├── instructor_scheduler.py         # Scheduler management coordinator
+        │   └── instructor_postprocessing.py    # Post-processing coordinator
+        │
+        ├── device/                             # Device management layer
+        │   ├── __init__.py                     
+        │   ├── interface_device.py             # Device interface
+        │   └── managers/
+        │       ├── __init__.py                 
+        │       └── manager_device.py           # Device management implementation
+        │
+        ├── communication/                      # Communication management layer
+        │   ├── __init__.py                     
+        │   ├── interface_communication.py      # Communication interface
+        │   └── managers/
+        │       ├── __init__.py                 
+        │       └── manager_communication.py    # Communication implementation
+        │
+        ├── models/                             # Model management layer
+        │   ├── __init__.py                     
+        │   ├── interface_model.py              # Model operations interface
+        │   ├── managers/                       # Model resource managers
+        │   │   ├── __init__.py                 
+        │   │   ├── manager_vae.py              # VAE model management
+        │   │   ├── manager_encoder.py          # Text encoder management
+        │   │   ├── manager_unet.py             # UNet model management
+        │   │   ├── manager_tokenizer.py        # Tokenizer management
+        │   │   └── manager_lora.py             # LoRA adapter management
+        │   │
+        │   └── workers/                        # Model execution workers
+        │       ├── __init__.py                 
+        │       └── worker_memory.py            # Memory management worker
+        │
+        ├── conditioning/                       # Conditioning processing layer
+        │   ├── __init__.py                     
+        │   ├── interface_conditioning.py       # Conditioning interface
+        │   ├── managers/                       # Conditioning resource managers
+        │   │   ├── __init__.py                 
+        │   │   └── manager_conditioning.py     # Conditioning lifecycle management
+        │   └── workers/                        # Conditioning execution workers
+        │       ├── __init__.py                 
+        │       ├── worker_prompt_processor.py  # Prompt processing worker
+        │       ├── worker_controlnet.py        # ControlNet conditioning worker
+        │       └── worker_img2img.py           # Image-to-image conditioning worker
+        │
+        ├── inference/                          # Inference processing layer
+        │   ├── __init__.py                     
+        │   ├── interface_inference.py          # Inference interface
+        │   ├── managers/                       # Inference resource managers
+        │   │   ├── __init__.py                 
+        │   │   ├── manager_batch.py            # Batch processing management
+        │   │   ├── manager_pipeline.py         # Pipeline lifecycle management
+        │   │   └── manager_memory.py           # Memory optimization management
+        │   └── workers/                        # Inference execution workers
+        │       ├── __init__.py                 
+        │       ├── worker_sdxl.py              # SDXL inference worker
+        │       ├── worker_controlnet.py        # ControlNet inference worker
+        │       └── worker_lora.py              # LoRA inference worker
+        │
+        ├── schedulers/                         # Scheduler management layer
+        │   ├── __init__.py                     
+        │   ├── interface_scheduler.py          # Scheduler interface
+        │   ├── managers/                       # Scheduler resource managers
+        │   │   ├── __init__.py                 
+        │   │   ├── manager_factory.py          # Scheduler factory management
+        │   │   └── manager_scheduler.py        # Scheduler lifecycle management
+        │   └── workers/                        # Scheduler execution workers
+        │       ├── __init__.py                 
+        │       ├── worker_ddim.py              # DDIM scheduler worker
+        │       ├── worker_dpm_plus_plus.py     # DPM++ scheduler worker
+        │       └── worker_euler.py             # Euler scheduler worker
+        │
+        ├── postprocessing/                     # Post-processing layer
+        │   ├── __init__.py                     
+        │   ├── interface_postprocessing.py     # Post-processing interface
+        │   ├── managers/                       # Post-processing resource managers
+        │   │   ├── __init__.py                 
+        │   │   └── manager_postprocessing.py   # Post-processing lifecycle management
+        │   └── workers/                        # Post-processing execution workers
+        │       ├── __init__.py                 
+        │       ├── worker_upscaler.py          # Image upscaling worker
+        │       ├── worker_image_enhancer.py    # Image enhancement worker
+        │       └── worker_safety_checker.py    # Safety checking worker
+        │
+        ├── utilities/                          # Support utilities layer
+        │   ├── __init__.py                     
+        │   └── dml_patch.py                    # DirectML patches and CUDA interception
+        ├── workers_config.json                 # Hierarchical configuration template
+        ├── compatibility.py                    # Backward compatibility layer
+        ├── migration_backup/                   # Migration backup directory
+        └── __pycache__/                        # Python bytecode cache
 ```
-
 
 # Domains
 ## Device
